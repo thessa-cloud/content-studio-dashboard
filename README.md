@@ -28,7 +28,7 @@ Plus a `[Scrape now]` button + `Last scraped: X hours ago` timestamp on every pa
 
 ## Setup
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FYOUR_GITHUB%2Fcontent-studio-dashboard&env=NEXT_PUBLIC_SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,FUNCTION_SECRET&envDescription=Supabase%20project%20URL,%20service%20role%20key,%20and%20a%20random%20string%20for%20the%20scraper%20function.&project-name=content-studio&repository-name=content-studio)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fthessa-cloud%2Fcontent-studio-dashboard&env=NEXT_PUBLIC_SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,FUNCTION_SECRET&envDescription=Supabase%20project%20URL,%20service%20role%20key,%20and%20a%20random%20string%20for%20the%20scraper%20function.&project-name=content-studio&repository-name=content-studio)
 
 1. **Click Deploy.** Vercel clones the template into your own account.
 2. **Create a Supabase project** (free tier is fine) and paste `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` into Vercel env vars.
@@ -38,8 +38,6 @@ Plus a `[Scrape now]` button + `Last scraped: X hours ago` timestamp on every pa
 6. Refresh the dashboard, your patterns appear.
 
 Full step-by-step guide (with screenshots) is in `Setup Guide.pdf`.
-
-> The Vercel Deploy button URL above contains a placeholder `YOUR_GITHUB`. Replace it with your own GitHub username/org once you fork the repo, or fill in the full URL after publishing.
 
 ## Configure your brand
 
