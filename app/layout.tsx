@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import config from "../config.json";
+import ThemeProvider from "./components/ThemeProvider";
 
 /**
  * Root layout.
@@ -37,6 +38,38 @@ const themeCss = Object.entries(themeOverrides)
   .map(([k, v]) => `  ${k}: ${v};`)
   .join("\n");
 
+// Blocking inline script, runs BEFORE first paint in <head>. Without this,
+// returning visitors who picked dark-pink (or custom) would see a ~100ms
+// burgundy flash on every navigation while React hydrates and ThemeProvider's
+// useEffect runs. The script reads localStorage["cs-theme"], validates each
+// hex against /^#[0-9a-fA-F]{6}$/, and pushes onto :root via setProperty so
+// the very first paint already shows the persisted theme.
+//
+// XSS guard, only validated 6-digit hex strings reach setProperty. Anything
+// else is silently ignored and falls through to the build-time defaults.
+const THEME_PREHYDRATE = `
+(function(){
+  try {
+    var raw = localStorage.getItem("cs-theme");
+    if (!raw) return;
+    var parsed = JSON.parse(raw);
+    var hex = /^#[0-9a-fA-F]{6}$/;
+    var pairs = [
+      ["accent", "--color-burgundy"],
+      ["accentLight", "--color-burgundy-light"],
+      ["accentSoft", "--color-burgundy-soft"]
+    ];
+    var root = document.documentElement;
+    for (var i = 0; i < pairs.length; i++) {
+      var v = parsed && parsed[pairs[i][0]];
+      if (typeof v === "string" && hex.test(v)) {
+        root.style.setProperty(pairs[i][1], v);
+      }
+    }
+  } catch (e) { /* fall back to build-time defaults */ }
+})();
+`.trim();
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" style={{ height: "100%" }}>
@@ -47,8 +80,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             dangerouslySetInnerHTML={{ __html: `:root {\n${themeCss}\n}` }}
           />
         )}
+        <script dangerouslySetInnerHTML={{ __html: THEME_PREHYDRATE }} />
       </head>
-      <body style={{ minHeight: "100%" }}>{children}</body>
+      <body style={{ minHeight: "100%" }}>
+        <ThemeProvider />
+        {children}
+      </body>
     </html>
   );
 }
