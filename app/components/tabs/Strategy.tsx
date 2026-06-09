@@ -5,7 +5,9 @@ import config from "../../../config.json";
 import TabContainer from "../shared/TabContainer";
 import TabHeader from "../shared/TabHeader";
 import EmptyState from "../shared/EmptyState";
-import { buildPillarsPrompt } from "../../../lib/promptBuilders";
+import PasteFromClaude, { stripCodeFences } from "../shared/PasteFromClaude";
+import CopyPromptButton from "../shared/CopyPromptButton";
+import { buildPillarsPrompt, buildVoicePrompt, buildHooksPrompt } from "../../../lib/promptBuilders";
 
 type Pillar = {
   name: string;
@@ -401,7 +403,11 @@ export default function Strategy() {
                 )}
               </div>
             ) : (
-              <InlineEmpty body="Click Edit to write your voice rules by hand, or run /prompts/2-extract-voice.md to learn them from your top captions." />
+              <InlineEmptyWithClaude
+                body="Click Edit to write your voice rules by hand, or copy a prompt for claude.ai and paste the JSON reply back."
+                buildPrompt={buildVoicePrompt}
+                claudeLabel="Get voice rules from Claude"
+              />
             )}
           </Section>
 
@@ -448,7 +454,11 @@ export default function Strategy() {
                 ))}
               </div>
             ) : (
-              <InlineEmpty body="Click Edit to log a hook by hand, or paste your scraped data into /prompts/3-hook-patterns.md to surface your top performers." />
+              <InlineEmptyWithClaude
+                body="Click Edit to log a hook by hand, or copy a prompt for claude.ai and paste the JSON reply back."
+                buildPrompt={buildHooksPrompt}
+                claudeLabel="Get hooks from Claude"
+              />
             )}
           </Section>
 
@@ -607,12 +617,52 @@ function PillarsEditor({
   const remove = (i: number) => setItems(items.filter((_, idx) => idx !== i));
   const add = () => setItems([...items, { name: "", description: "" }]);
 
+  // Preserve color + share when Claude returned them so pillar cards keep
+  // their distinct hue + percentage. We only strip empty fields, not typed
+  // ones — losing color/share here was the bug.
   const cleaned = items
-    .map((p) => ({ ...p, name: p.name.trim(), description: p.description?.trim() || undefined }))
+    .map((p) => ({
+      name: p.name.trim(),
+      description: p.description?.trim() || undefined,
+      color: typeof p.color === "string" && p.color.trim() ? p.color.trim() : undefined,
+      share: typeof p.share === "number" && Number.isFinite(p.share) ? p.share : undefined,
+    }))
     .filter((p) => p.name.length > 0);
 
   return (
     <EditorShell saving={saving} onCancel={onCancel} onSave={() => onSave(cleaned)} disabled={cleaned.length === 0}>
+      <PasteFromClaude<Pillar[]>
+        label="Paste Claude's pillars JSON"
+        parse={parsePillarsReply}
+        render={(arr) => (
+          <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gap: "0.35rem" }}>
+            {arr.map((p, idx) => (
+              <li key={idx} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                {p.color && (
+                  <span
+                    aria-hidden
+                    style={{
+                      width: "12px",
+                      height: "12px",
+                      borderRadius: "50%",
+                      background: p.color,
+                      flexShrink: 0,
+                    }}
+                  />
+                )}
+                <strong style={{ fontFamily: "var(--font-header)" }}>{p.name}</strong>
+                {typeof p.share === "number" && (
+                  <span style={{ color: "var(--color-text-dim)", fontSize: "0.72rem" }}>
+                    {Math.round(p.share * 100)}%
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        onApply={(arr) => setItems(arr.length > 0 ? arr : [{ name: "", description: "" }])}
+      />
+
       <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
         {items.map((p, i) => (
           <div
@@ -699,6 +749,32 @@ function VoiceEditor({
         clean(forbidden).length === 0
       }
     >
+      <PasteFromClaude<Voice>
+        label="Paste Claude's voice JSON"
+        parse={parseVoiceReply}
+        render={(v) => (
+          <div style={{ display: "grid", gap: "0.3rem" }}>
+            {v.tone && (
+              <p style={{ margin: 0 }}>
+                <strong>Tone:</strong> {v.tone}
+              </p>
+            )}
+            <p style={{ margin: 0, color: "var(--color-text-dim)" }}>
+              {v.rules?.length ?? 0} rules · {v.signature_phrases?.length ?? 0} signature phrases ·{" "}
+              {v.forbidden?.length ?? 0} forbidden
+            </p>
+          </div>
+        )}
+        onApply={(v) => {
+          setTone(v.tone ?? "");
+          setRules(v.rules && v.rules.length > 0 ? v.rules : [""]);
+          setSignaturePhrases(
+            v.signature_phrases && v.signature_phrases.length > 0 ? v.signature_phrases : [""]
+          );
+          setForbidden(v.forbidden && v.forbidden.length > 0 ? v.forbidden : [""]);
+        }}
+      />
+
       <FieldLabel>Tone (one short phrase)</FieldLabel>
       <input
         type="text"
@@ -762,6 +838,31 @@ function HooksEditor({
       onSave={() => onSave(cleaned)}
       disabled={cleaned.length === 0}
     >
+      <PasteFromClaude<Hook[]>
+        label="Paste Claude's hooks JSON"
+        parse={parseHooksReply}
+        render={(arr) => (
+          <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gap: "0.3rem" }}>
+            {arr.slice(0, 10).map((h, idx) => (
+              <li key={idx} style={{ display: "flex", flexDirection: "column", gap: "0.1rem" }}>
+                <span style={{ fontSize: "0.78rem" }}>&ldquo;{h.text}&rdquo;</span>
+                <span style={{ fontSize: "0.7rem", color: "var(--color-text-dim)" }}>
+                  {h.type ?? "(no type)"} · {h.source === "mine" ? "Mine" : "Competitor"}
+                </span>
+              </li>
+            ))}
+            {arr.length > 10 && (
+              <li style={{ fontSize: "0.72rem", color: "var(--color-text-dim)" }}>
+                ...and {arr.length - 10} more
+              </li>
+            )}
+          </ul>
+        )}
+        onApply={(arr) =>
+          setItems(arr.length > 0 ? arr : [{ text: "", type: "", source: "mine", note: "" }])
+        }
+      />
+
       <p style={{ fontSize: "0.78rem", color: "var(--color-text-dim)", marginBottom: "0.4rem" }}>
         One hook per row. These are the opening lines (or first 1-2 sentences) of posts that worked, your own or your competitors&apos;.
       </p>
@@ -1047,6 +1148,47 @@ function InlineEmpty({ body }: { body: string }) {
   );
 }
 
+/**
+ * InlineEmptyWithClaude.
+ *
+ * The per-section empty state. Same dashed cream block as InlineEmpty, but
+ * includes a "Get X from Claude" button that copies the section-specific
+ * prompt and opens claude.ai. Customer then comes back, hits Edit, and
+ * pastes the JSON via the editor's PasteFromClaude block.
+ *
+ * The CopyPromptButton lives inline next to the body copy so the customer
+ * sees the path in one glance: read sentence → click button → come back →
+ * edit + paste reply.
+ */
+function InlineEmptyWithClaude({
+  body,
+  buildPrompt,
+  claudeLabel,
+}: {
+  body: string;
+  buildPrompt: () => Promise<string>;
+  claudeLabel: string;
+}) {
+  return (
+    <div
+      style={{
+        background: "var(--color-cream)",
+        border: "1px dashed var(--color-border)",
+        borderRadius: "10px",
+        padding: "1rem 1.25rem",
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.65rem",
+      }}
+    >
+      <p style={{ fontSize: "0.82rem", color: "var(--color-text-dim)", margin: 0 }}>{body}</p>
+      <div>
+        <CopyPromptButton label={claudeLabel} buildPrompt={buildPrompt} tone="secondary" />
+      </div>
+    </div>
+  );
+}
+
 function Pill({ children, tone = "default" }: { children: React.ReactNode; tone?: "default" | "dim" }) {
   return (
     <span
@@ -1181,3 +1323,116 @@ const addRowBtn: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
 };
+
+/* ─────────── Claude-reply parsers ───────────
+ *
+ * Each parser accepts whatever Claude returned (with or without ```json```
+ * fences, with or without prose surrounding the JSON), and returns a
+ * discriminated union: { ok: true; value } or { ok: false; error }.
+ *
+ * Errors must be short and actionable so the customer can fix their paste
+ * without reading docs. The most common failure is: Claude wrapped the JSON
+ * in prose ("Here are your pillars: …") — stripCodeFences handles that.
+ */
+
+function parsePillarsReply(raw: string): { ok: true; value: Pillar[] } | { ok: false; error: string } {
+  try {
+    const body = stripCodeFences(raw);
+    const parsed = JSON.parse(body);
+    if (!Array.isArray(parsed)) {
+      return { ok: false, error: "Expected a JSON array of pillars at the top level." };
+    }
+    const value: Pillar[] = [];
+    for (const item of parsed) {
+      if (!item || typeof item !== "object") continue;
+      const r = item as Record<string, unknown>;
+      const name = typeof r.name === "string" ? r.name.trim() : "";
+      if (!name) continue;
+      value.push({
+        name,
+        description: typeof r.description === "string" ? r.description.trim() : undefined,
+        color: typeof r.color === "string" && /^#?[0-9a-f]{3,8}$/i.test(r.color.trim()) ?
+          (r.color.trim().startsWith("#") ? r.color.trim() : "#" + r.color.trim()) : undefined,
+        share: typeof r.share === "number" && Number.isFinite(r.share) ? Math.max(0, Math.min(1, r.share)) : undefined,
+      });
+    }
+    if (value.length === 0) {
+      return { ok: false, error: "Parsed JSON but found no pillars with a name." };
+    }
+    return { ok: true, value };
+  } catch (e) {
+    return {
+      ok: false,
+      error: "Could not parse as JSON. Make sure you copied Claude's full reply, including the [ and ].",
+    };
+  }
+}
+
+function parseVoiceReply(raw: string): { ok: true; value: Voice } | { ok: false; error: string } {
+  try {
+    const body = stripCodeFences(raw);
+    const parsed = JSON.parse(body);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { ok: false, error: "Expected a JSON object with tone / rules / signature_phrases / forbidden." };
+    }
+    const r = parsed as Record<string, unknown>;
+    const cleanList = (v: unknown): string[] =>
+      Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((s) => s.trim()) : [];
+    return {
+      ok: true,
+      value: {
+        tone: typeof r.tone === "string" ? r.tone.trim() : undefined,
+        rules: cleanList(r.rules),
+        signature_phrases: cleanList(r.signature_phrases ?? r.signaturePhrases),
+        forbidden: cleanList(r.forbidden),
+      },
+    };
+  } catch {
+    return {
+      ok: false,
+      error: "Could not parse as JSON. Make sure you copied the whole object including the { and }.",
+    };
+  }
+}
+
+function parseHooksReply(raw: string): { ok: true; value: Hook[] } | { ok: false; error: string } {
+  try {
+    const body = stripCodeFences(raw);
+    const parsed = JSON.parse(body);
+    if (!Array.isArray(parsed)) {
+      return { ok: false, error: "Expected a JSON array of hooks." };
+    }
+    const value: Hook[] = [];
+    for (const item of parsed) {
+      if (!item || typeof item !== "object") continue;
+      const r = item as Record<string, unknown>;
+      const text = typeof r.text === "string" ? r.text.trim() : "";
+      if (!text) continue;
+      // Source mapping: prompt schema says "mine" or "@handle". Editor only
+      // knows "mine" | "competitor", so anything not "mine" or "self" becomes
+      // "competitor". The handle itself is preserved into the note field if
+      // not already present, so the customer doesn't lose attribution.
+      const srcRaw = typeof r.source === "string" ? r.source.trim() : "";
+      const isMine = srcRaw === "mine" || srcRaw === "self";
+      const noteRaw = typeof r.note === "string" ? r.note.trim() : "";
+      const note = !isMine && srcRaw && !noteRaw ? `via ${srcRaw}` :
+                   !isMine && srcRaw && noteRaw && !noteRaw.includes(srcRaw) ? `${noteRaw} (via ${srcRaw})` :
+                   noteRaw || undefined;
+      value.push({
+        text,
+        type: typeof r.type === "string" ? r.type.trim() : undefined,
+        source: isMine ? "mine" : "competitor",
+        note,
+      });
+    }
+    if (value.length === 0) {
+      return { ok: false, error: "Parsed JSON but found no hooks with text." };
+    }
+    return { ok: true, value };
+  } catch {
+    return {
+      ok: false,
+      error: "Could not parse as JSON. Make sure you copied Claude's full reply, including the [ and ].",
+    };
+  }
+}

@@ -5,6 +5,7 @@ import config from "../../../config.json";
 import TabContainer from "../shared/TabContainer";
 import TabHeader from "../shared/TabHeader";
 import EmptyState from "../shared/EmptyState";
+import PasteFromClaude, { stripCodeFences } from "../shared/PasteFromClaude";
 import { buildDraftCaptionPrompt } from "../../../lib/promptBuilders";
 
 type DraftStatus = "draft" | "scheduled" | "posted";
@@ -63,18 +64,33 @@ export default function Drafts() {
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const load = () => {
+  // Load drafts with an AbortController so a tab-switch (or hot-reload during
+  // dev) doesn't trigger a "setState on unmounted component" warning, and
+  // doesn't race a stale response into the freshly-mounted view. Strategy.tsx
+  // already does this; Drafts was the last holdout.
+  const load = (signal?: AbortSignal) => {
     setLoading(true);
-    fetch("/api/data?tab=drafts")
+    fetch("/api/data?tab=drafts", { signal })
       .then((r) => r.json())
       .then((r) => {
+        if (signal?.aborted) return;
         setDrafts(r.data ?? []);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch((e) => {
+        // AbortError is normal on unmount; quietly drop it. Anything else
+        // we let surface as "loading=false" so the empty state still renders
+        // and the user isn't stuck on a spinner.
+        if (e?.name === "AbortError") return;
+        setLoading(false);
+      });
   };
 
-  useEffect(load, []);
+  useEffect(() => {
+    const ctrl = new AbortController();
+    load(ctrl.signal);
+    return () => ctrl.abort();
+  }, []);
 
   async function createDraft() {
     if (!draft.caption.trim()) return;
@@ -261,6 +277,47 @@ export default function Drafts() {
           >
             New draft
           </p>
+
+          <PasteFromClaude<ParsedDraftOption[]>
+            label="Paste Claude's 3 caption options"
+            parse={parseDraftOptionsReply}
+            render={(opts) => (
+              <ol style={{ margin: 0, paddingLeft: "1.1rem", display: "grid", gap: "0.55rem" }}>
+                {opts.map((o, i) => (
+                  <li key={i} style={{ display: "grid", gap: "0.2rem" }}>
+                    <strong style={{ fontFamily: "var(--font-header)" }}>{o.hook}</strong>
+                    <span style={{ color: "var(--color-text-dim)", fontSize: "0.72rem" }}>
+                      {o.format ?? "·"}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )}
+            onApply={(opts) => {
+              // First option populates the form by default — the customer
+              // can scroll up after applying and edit. We assemble the
+              // caption body as: BODY \n\n CTA so it lands in one textarea.
+              const first = opts[0];
+              if (!first) return;
+              setDraft((d) => ({
+                ...d,
+                hook: first.hook,
+                caption: first.cta ? `${first.body}\n\n${first.cta}` : first.body,
+                slide_count:
+                  first.format && first.format.toLowerCase().includes("carousel")
+                    ? Number((first.format.match(/(\d+)/) ?? [])[1] ?? d.slide_count) || d.slide_count
+                    : d.slide_count,
+                type:
+                  first.format && first.format.toLowerCase().includes("reel")
+                    ? "reel"
+                    : first.format && first.format.toLowerCase().includes("image")
+                    ? "image"
+                    : first.format && first.format.toLowerCase().includes("carousel")
+                    ? "carousel"
+                    : d.type,
+              }));
+            }}
+          />
 
           <input
             type="text"
@@ -787,7 +844,7 @@ function CalendarView({
                   {d.getDate()}
                 </p>
                 {items.length === 0 ? (
-                  <p style={{ fontSize: "0.7rem", color: "var(--color-text-dim)", opacity: 0.7 }}>—</p>
+                  <p style={{ fontSize: "0.7rem", color: "var(--color-text-dim)", opacity: 0.7 }}>·</p>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
                     {items.map((it) => (
@@ -945,4 +1002,87 @@ function Tag({
       {children}
     </span>
   );
+}
+
+/* ─────────── Claude reply parser (caption options) ─────────── */
+
+type ParsedDraftOption = {
+  hook: string;
+  body: string;
+  cta?: string;
+  format?: string;
+};
+
+/**
+ * parseDraftOptionsReply.
+ *
+ * Claude returns Markdown with 3 numbered options. Each option includes a
+ * Hook line, Body paragraphs, a CTA line, and a Format suggestion. The
+ * exact layout the prompt asks for is:
+ *
+ *   1. Option 1
+ *   - **Hook** — text...
+ *   - **Body** — text...
+ *   - **CTA** — text...
+ *   - **Format** — text...
+ *
+ * Claude's Markdown rendering varies — sometimes it uses headings, sometimes
+ * bullets, sometimes bold labels. This parser tolerates the common shapes
+ * and returns up to 3 ParsedDraftOption objects. Empty result -> error.
+ */
+function parseDraftOptionsReply(
+  raw: string
+): { ok: true; value: ParsedDraftOption[] } | { ok: false; error: string } {
+  const body = stripCodeFences(raw);
+  // Split into option blocks. Look for "Option N" / "## N" / "**Option N**" /
+  // "N." at the start of a line. Fall back to splitting on horizontal rules.
+  const blocks = body
+    .split(/^\s*(?:#{1,3}\s*)?(?:\*\*\s*)?(?:Option\s+)?\d+[.):]\s*(?:\*\*\s*)?/gim)
+    .map((b) => b.trim())
+    .filter((b) => b.length > 0);
+
+  // Field-extraction regexes. The separator character class accepts colon,
+  // hyphen, and U+2014 em-dash (—) because Claude occasionally emits
+  // them between label and value even when we ask for plain colons. We use
+  // the Unicode escape rather than a literal so this file stays em-dash-free
+  // in source. The construction is split out so the character class is
+  // defined once and reused for clarity.
+  const sep = "[:\\-\\u2014]";
+  const options: ParsedDraftOption[] = [];
+  for (const block of blocks) {
+    const hook = extractField(block, new RegExp(`(?:^|\\n)\\s*[-*]?\\s*\\*?\\*?Hook\\*?\\*?\\s*${sep}\\s*(.+?)(?=\\n\\s*[-*]?\\s*\\*?\\*?(?:Body|CTA|Format)|\\n\\n|$)`, "is"));
+    const bodyText = extractField(block, new RegExp(`(?:^|\\n)\\s*[-*]?\\s*\\*?\\*?Body\\*?\\*?\\s*${sep}\\s*([\\s\\S]+?)(?=\\n\\s*[-*]?\\s*\\*?\\*?(?:CTA|Format)|$)`, "is"));
+    const cta = extractField(block, new RegExp(`(?:^|\\n)\\s*[-*]?\\s*\\*?\\*?CTA\\*?\\*?\\s*${sep}\\s*(.+?)(?=\\n\\s*[-*]?\\s*\\*?\\*?Format|\\n\\n|$)`, "is"));
+    const format = extractField(block, new RegExp(`(?:^|\\n)\\s*[-*]?\\s*\\*?\\*?Format\\*?\\*?\\s*${sep}\\s*(.+?)(?=\\n\\n|$)`, "is"));
+    if (hook || bodyText) {
+      options.push({
+        hook: cleanLine(hook ?? ""),
+        body: cleanLine(bodyText ?? ""),
+        cta: cta ? cleanLine(cta) : undefined,
+        format: format ? cleanLine(format) : undefined,
+      });
+    }
+    if (options.length === 3) break;
+  }
+
+  if (options.length === 0) {
+    return {
+      ok: false,
+      error:
+        "Could not find Hook/Body/CTA/Format labels in the reply. Make sure you copied Claude's full reply with all 3 options.",
+    };
+  }
+  return { ok: true, value: options };
+}
+
+function extractField(text: string, re: RegExp): string | null {
+  const m = text.match(re);
+  return m && m[1] ? m[1].trim() : null;
+}
+
+function cleanLine(s: string): string {
+  return s
+    .replace(/^\*\*|\*\*$/g, "")
+    .replace(/^["'`]|["'`]$/g, "")
+    .trim();
 }

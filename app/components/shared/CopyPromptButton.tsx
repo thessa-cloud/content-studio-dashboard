@@ -43,20 +43,58 @@ export default function CopyPromptButton({
   disabled?: boolean;
   disabledReason?: string;
 }) {
-  const [state, setState] = useState<"idle" | "loading" | "copied" | "error">("idle");
+  const [state, setState] = useState<"idle" | "loading" | "copied" | "error" | "empty">(
+    "idle"
+  );
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const onClick = async () => {
     if (disabled) return;
+    // Open the Claude tab SYNCHRONOUSLY, before any await. Safari (and Chrome
+    // with strict popup settings) blocks window.open() that runs after an
+    // async hop because it's no longer "in response to a user gesture". If we
+    // wait for buildPrompt + clipboard.writeText to resolve first, the popup
+    // is silently swallowed and the customer has no tab to paste into.
+    // The trade-off: the tab opens even if the clipboard fails. That's fine —
+    // worst case, they switch back, hit the button again.
+    const claudeWindow = window.open(claudeUrl, "_blank", "noopener,noreferrer");
     setState("loading");
     try {
       const prompt = await buildPrompt();
       await navigator.clipboard.writeText(prompt);
       setState("copied");
-      // Pop a new tab to Claude. Best effort, popups may be blocked. The
-      // clipboard write already succeeded, so they can paste manually.
-      window.open(claudeUrl, "_blank", "noopener,noreferrer");
+      // Focus the tab we opened (best effort; some browsers ignore .focus()).
+      if (claudeWindow) {
+        try {
+          claudeWindow.focus();
+        } catch {
+          /* noop */
+        }
+      }
       setTimeout(() => setState("idle"), 3500);
-    } catch {
+    } catch (e) {
+      // Builders throw `EMPTY_VAULT: <message>` when there are no posts to
+      // splice in. Surface that as a distinct, non-scary state: this isn't
+      // a failure, it's a "go do the prerequisite step first" nudge. Also
+      // close the empty Claude tab we eagerly opened, so the customer
+      // doesn't end up staring at a chat window with nothing to paste.
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.startsWith("EMPTY_VAULT:")) {
+        if (claudeWindow) {
+          try {
+            claudeWindow.close();
+          } catch {
+            /* noop */
+          }
+        }
+        setErrorMsg(msg.replace(/^EMPTY_VAULT:\s*/, ""));
+        setState("empty");
+        setTimeout(() => {
+          setState("idle");
+          setErrorMsg(null);
+        }, 4500);
+        return;
+      }
       setState("error");
       setTimeout(() => setState("idle"), 2500);
     }
@@ -84,18 +122,30 @@ export default function CopyPromptButton({
   } else if (state === "copied") {
     icon = <Check size={13} strokeWidth={2.2} />;
     text = "Copied. Paste in Claude →";
+  } else if (state === "empty") {
+    text = errorMsg ?? "Vault is empty. Scrape first.";
   } else if (state === "error") {
     text = "Could not copy. Try again";
   } else if (!disabled) {
     icon = <ExternalLink size={13} strokeWidth={2} />;
   }
 
+  // In the "empty" state we show the message inline as the button label so
+  // the customer doesn't miss it. The button stays clickable so they can
+  // retry after scraping. The title reuses errorMsg for hover-revealing the
+  // full reason if the label gets truncated on narrow viewports.
+  const buttonTitle = disabled
+    ? disabledReason
+    : state === "empty" && errorMsg
+    ? errorMsg
+    : undefined;
+
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled || state === "loading"}
-      title={disabled ? disabledReason : undefined}
+      title={buttonTitle}
       style={{
         display: "inline-flex",
         alignItems: "center",

@@ -13,5 +13,17 @@
 export function fenceData(label: string, payload: unknown): string {
   const body =
     typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
-  return `\n\n\`\`\`${label}\n${body}\n\`\`\`\n`;
+
+  // If the body itself contains a run of backticks (e.g. a creator pasted a
+  // caption that had ```python in it, or a competitor caption included a
+  // code block), a 3-backtick fence would terminate early and Claude would
+  // read the rest as instructions. We compute the longest backtick run in
+  // the body and pick a fence one tick longer — Markdown handles this fine
+  // (CommonMark spec § 4.5 "Fenced code blocks").
+  const matches = body.match(/`+/g) ?? [];
+  const longestRun = matches.reduce((max, run) => Math.max(max, run.length), 0);
+  const fenceLen = Math.max(3, longestRun + 1);
+  const fence = "`".repeat(fenceLen);
+
+  return `\n\n${fence}${label}\n${body}\n${fence}\n`;
 }
