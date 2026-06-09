@@ -2,22 +2,23 @@
 import { useState, useEffect } from "react";
 import { Menu } from "lucide-react";
 import Sidebar from "./components/Sidebar";
+import SetupBanner from "./components/SetupBanner";
 import Performance from "./components/tabs/Performance";
 import Strategy from "./components/tabs/Strategy";
 import Drafts from "./components/tabs/Drafts";
-import Library from "./components/tabs/Library";
+import Vault from "./components/tabs/Vault";
 import Intel from "./components/tabs/Intel";
 import Settings from "./components/tabs/Settings";
 import config from "../config.json";
 
-type Tab = "drafts" | "strategy" | "performance" | "intel" | "library" | "settings";
+type Tab = "drafts" | "strategy" | "performance" | "intel" | "vault" | "settings";
 
 const TAB_LABELS: Record<Tab, string> = {
   drafts:      "Drafts",
   strategy:    "Strategy",
   performance: "Performance",
   intel:       "Competitor Intel",
-  library:     "Library",
+  vault:       "Vault",
   settings:    "Settings",
 };
 
@@ -60,12 +61,14 @@ export default function Home() {
           <span className="mobile-brand">{brandName}</span>
         </header>
 
+        <SetupBanner />
+
         <div key={tab} className="fade-in">
           {tab === "drafts"      && <Drafts />}
           {tab === "strategy"    && <Strategy />}
           {tab === "performance" && <Performance />}
           {tab === "intel"       && <Intel />}
-          {tab === "library"     && <Library />}
+          {tab === "vault"       && <Vault />}
           {tab === "settings"    && <Settings />}
         </div>
       </main>

@@ -4,14 +4,14 @@ import {
   BarChart3,
   Sparkles,
   PenLine,
-  Library as LibraryIcon,
+  Archive as VaultIcon,
   Search,
   Settings as SettingsIcon,
   X,
 } from "lucide-react";
 import config from "../../config.json";
 
-type Tab = "drafts" | "strategy" | "performance" | "intel" | "library" | "settings";
+type Tab = "drafts" | "strategy" | "performance" | "intel" | "vault" | "settings";
 
 interface SidebarProps {
   active: Tab;
@@ -25,7 +25,7 @@ const tabs: { id: Tab; Icon: typeof BarChart3; label: string }[] = [
   { id: "strategy",    Icon: Sparkles,    label: "Strategy" },
   { id: "performance", Icon: BarChart3,   label: "Performance" },
   { id: "intel",       Icon: Search,      label: "Competitor Intel" },
-  { id: "library",     Icon: LibraryIcon, label: "Library" },
+  { id: "vault",       Icon: VaultIcon,   label: "Vault" },
   { id: "settings",    Icon: SettingsIcon, label: "Settings" },
 ];
 

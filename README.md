@@ -10,7 +10,7 @@ Six tabs, one workspace:
 - **Strategy**, your content pillars, voice rules, ICA notes, current campaigns (filled by Claude)
 - **Performance**, your top posts, hooks, topics, sorted by engagement
 - **Intel**, up to 5 competitor handles, their top hooks and patterns
-- **Library**, the raw scrape data, searchable, filterable, the source Claude reads
+- **Vault**, the raw scrape data, searchable, filterable, the source Claude reads
 - **Settings**, brand name, Apify token, theme color, competitors, trigger words
 
 Plus a `[Scrape now]` button + `Last scraped: X hours ago` timestamp on every page.

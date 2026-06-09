@@ -5,7 +5,7 @@ import TabContainer from "../shared/TabContainer";
 import TabHeader from "../shared/TabHeader";
 import EmptyState from "../shared/EmptyState";
 
-type LibraryPost = {
+type VaultPost = {
   id: string;
   source: "self" | "competitor";
   handle: string;
@@ -22,28 +22,28 @@ type LibraryPost = {
   scraped_at?: string;
 };
 
-type LibraryData = {
-  posts: LibraryPost[];
+type VaultData = {
+  posts: VaultPost[];
   scraped_at?: string | null;
 };
 
 /**
- * Library tab.
+ * Vault tab.
  *
- * The raw scrape data, searchable + filterable. Source for everything Claude
- * Code reads when running any prompt. No Claude prompt needed to populate this;
- * a successful scrape fills it directly.
+ * The raw scrape data, searchable + filterable. Source for every prompt you
+ * paste into Claude (Web, Desktop, or Code). No Claude prompt needed to fill
+ * this tab — a successful Apify scrape lands posts here directly.
  */
-export default function Library() {
-  const [data, setData] = useState<LibraryData | null>(null);
+export default function Vault() {
+  const [data, setData] = useState<VaultData | null>(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState<"all" | "self" | "competitor">("all");
-  const [typeFilter, setTypeFilter] = useState<"all" | LibraryPost["type"]>("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | VaultPost["type"]>("all");
 
   const load = () => {
     setLoading(true);
-    fetch("/api/data?tab=library")
+    fetch("/api/data?tab=vault")
       .then((r) => r.json())
       .then((r) => {
         setData(r.data ?? null);
@@ -73,8 +73,8 @@ export default function Library() {
   return (
     <TabContainer>
       <TabHeader
-        title="Library"
-        subtitle="The raw scrape. Every post Claude Code reads when running a prompt lives here, searchable and filterable."
+        title="Vault"
+        subtitle="The raw scrape. Every post Claude reads when running a prompt lives here, searchable and filterable."
         scrapedAt={data?.scraped_at}
         onScrapeComplete={load}
       />
@@ -89,8 +89,8 @@ export default function Library() {
 
       {!loading && !hasPosts && (
         <EmptyState
-          title="Library is empty"
-          body="Trigger your first scrape with the Scrape now button above. Posts from your own handle and your competitors will land here, ready for Claude Code to read."
+          title="Vault is empty"
+          body="Click [Scrape now] above to pull your latest posts + your competitors. Once they land here, every other tab can be filled by copy-pasting a prompt into claude.ai → pasting Claude's reply back."
         />
       )}
 

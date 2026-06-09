@@ -8,7 +8,7 @@ import { createClient } from "@supabase/supabase-js";
  *   GET    /api/data?tab=strategy              → pillars + voice + campaigns
  *   GET    /api/data?tab=drafts                → all drafts (newest first)
  *   GET    /api/data?tab=intel&handle=foo      → latest snapshot for one handle
- *   GET    /api/data?tab=library               → raw scrape feed (posts)
+ *   GET    /api/data?tab=vault                 → raw scrape feed (posts)
  *   GET    /api/data?tab=scrape-meta           → most recent scraped_at
  *
  *   POST   /api/data?tab=drafts                → create draft
@@ -69,6 +69,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({
         data: {
           ...data,
+          // `hooks` is an optional jsonb column. Older installs that haven't
+          // run the additive ALTER yet return undefined; surface an empty
+          // array so the UI never has to nil-check.
+          hooks: Array.isArray(data.hooks) ? data.hooks : [],
           voice_rules: Array.isArray(voice.rules) ? voice.rules : [],
           voice_tone: typeof voice.tone === "string" ? voice.tone : null,
           voice_signature_phrases: Array.isArray(voice.signature_phrases)
@@ -101,7 +105,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ data: data ?? null });
     }
 
-    if (tab === "library") {
+    if (tab === "vault") {
       const { data } = await supabase
         .from("library_posts")
         .select("*")
@@ -172,6 +176,7 @@ export async function POST(req: NextRequest) {
           pillars: Array.isArray(body.pillars) ? body.pillars : [],
           voice: isPlainObject(body.voice) ? body.voice : {},
           campaigns: Array.isArray(body.campaigns) ? body.campaigns : [],
+          hooks: Array.isArray(body.hooks) ? body.hooks : [],
           ica_notes: typeof body.ica_notes === "string" ? body.ica_notes : null,
         },
       ])
@@ -185,7 +190,7 @@ export async function POST(req: NextRequest) {
 }
 
 // Whitelist of tabs that may be mutated through PATCH/DELETE. Read-only
-// tabs (performance, library, competitors, scrape_log) are written exclusively
+// tabs (performance, vault, competitors, scrape_log) are written exclusively
 // by the Apify Edge Function, never by the dashboard. Without this whitelist
 // the `tab` query param would let a caller target any table via the service
 // role key.

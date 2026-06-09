@@ -40,8 +40,12 @@ create table if not exists public.strategy (
   pillars     jsonb default '[]'::jsonb,
   voice       jsonb default '{}'::jsonb,
   campaigns   jsonb default '[]'::jsonb,
+  hooks       jsonb default '[]'::jsonb,
   ica_notes   text
 );
+
+-- Idempotent upgrade for installs that ran the v1 schema before `hooks` existed.
+alter table public.strategy add column if not exists hooks jsonb default '[]'::jsonb;
 
 create index if not exists strategy_updated_at_idx
   on public.strategy (updated_at desc);
@@ -59,7 +63,10 @@ create table if not exists public.drafts (
                   check (status in ('draft', 'scheduled', 'posted')),
   pillar          text,
   hook_type       text,
-  trigger_words   text[] default '{}',
+  -- A draft tags itself with at most one trigger word (the campaign keyword
+  -- driving this post). The UI is a single text input; the column is singular
+  -- to match. If we ever need multiple, migrate to text[] additively.
+  trigger_word    text,
   slide_count     integer,
   format          text,
   scheduled_for   timestamptz,
@@ -72,6 +79,26 @@ create index if not exists drafts_created_at_idx
   on public.drafts (created_at desc);
 create index if not exists drafts_status_idx
   on public.drafts (status);
+
+-- Idempotent upgrade: pre-release installs ran with a `trigger_words text[]`
+-- column. The UI never supported multiple values, so we converge on a single
+-- `trigger_word text`. Backfills [0] then drops the old array column.
+alter table public.drafts add column if not exists trigger_word text;
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+     where table_schema = 'public'
+       and table_name   = 'drafts'
+       and column_name  = 'trigger_words'
+  ) then
+    update public.drafts
+       set trigger_word = trigger_words[1]
+     where trigger_word is null
+       and array_length(trigger_words, 1) > 0;
+    alter table public.drafts drop column trigger_words;
+  end if;
+end$$;
 
 -- Auto-bump updated_at on edits so the UI can show a live "last edited" hint.
 create or replace function public.touch_updated_at()
@@ -111,7 +138,7 @@ alter table public.competitors enable row level security;
 
 -- ── 5. library_posts ────────────────────────────────────────────────────────
 -- The raw scrape feed — every post pulled from the user's account and every
--- competitor's account. Library tab renders this directly.
+-- competitor's account. Vault tab renders this directly.
 create table if not exists public.library_posts (
   id            uuid primary key default gen_random_uuid(),
   source        text not null,                  -- 'self' or '@handle'

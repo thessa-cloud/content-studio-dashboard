@@ -5,6 +5,7 @@ import config from "../../../config.json";
 import TabContainer from "../shared/TabContainer";
 import TabHeader from "../shared/TabHeader";
 import EmptyState from "../shared/EmptyState";
+import { buildPillarsPrompt } from "../../../lib/promptBuilders";
 
 type Pillar = {
   name: string;
@@ -26,6 +27,13 @@ type Voice = {
   forbidden?: string[];
 };
 
+type Hook = {
+  text: string;
+  type?: string;             // curiosity | contrarian | promise | numbered | …
+  source?: "mine" | "competitor";
+  note?: string;
+};
+
 type StrategyData = {
   id?: string;
   pillars: Pillar[];
@@ -35,12 +43,13 @@ type StrategyData = {
   voice_signature_phrases?: string[];
   voice_forbidden?: string[];
   campaigns: Campaign[];
+  hooks: Hook[];
   ica_notes?: string | null;
   scraped_at?: string | null;
   updated_at?: string | null;
 };
 
-type EditSection = "pillars" | "voice" | "campaigns" | "ica" | null;
+type EditSection = "pillars" | "voice" | "hooks" | "campaigns" | "ica" | null;
 
 /**
  * Strategy tab.
@@ -121,13 +130,18 @@ export default function Strategy() {
           setEditing(null);
         }
       } else {
-        // First save → POST a brand-new row
+        // First save → POST a brand-new row.
+        // Every editable column must appear here, otherwise the very first save
+        // from inside that editor (e.g. opening Hooks editor before pillars
+        // exist) would land an empty value in the DB and the user's input
+        // would disappear on next reload.
         const res = await fetch("/api/data?tab=strategy", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             pillars: patch.pillars ?? [],
             voice: patch.voice ?? {},
+            hooks: patch.hooks ?? [],
             campaigns: patch.campaigns ?? [],
             ica_notes: patch.ica_notes ?? null,
           }),
@@ -149,6 +163,7 @@ export default function Strategy() {
 
   const pillars = data?.pillars ?? [];
   const campaigns = data?.campaigns ?? [];
+  const hooks = data?.hooks ?? [];
   const voiceRules = data?.voice_rules ?? config.voice?.rules ?? [];
   const voiceTone = data?.voice_tone ?? null;
   const voiceSignaturePhrases = data?.voice_signature_phrases ?? [];
@@ -156,14 +171,15 @@ export default function Strategy() {
 
   const hasPillars = pillars.length > 0;
   const hasVoice = voiceRules.length > 0 || !!voiceTone;
+  const hasHooks = hooks.length > 0;
   const hasCampaigns = campaigns.length > 0;
-  const hasAny = hasPillars || hasVoice || hasCampaigns || !!data?.ica_notes;
+  const hasAny = hasPillars || hasVoice || hasHooks || hasCampaigns || !!data?.ica_notes;
 
   return (
     <TabContainer>
       <TabHeader
         title="Strategy"
-        subtitle="Your content pillars, voice rules, and current campaigns. Edit them by hand here, or let Claude Code fill them by running the prompts in /prompts/."
+        subtitle="Your content pillars, voice rules, and current campaigns. Edit them by hand here, or click any section's empty-state button to copy a prompt for claude.ai and paste the JSON reply back."
         scrapedAt={data?.scraped_at}
         onScrapeComplete={load}
       />
@@ -179,9 +195,11 @@ export default function Strategy() {
       {!loading && !hasAny && editing === null && (
         <EmptyState
           title="No strategy mapped yet"
-          body="Fill these by hand using the Edit buttons below, or let Claude Code read your last 30 posts and write them for you with the pillar prompt."
+          body="Click below to copy a prompt pre-filled with your last 30 posts. claude.ai opens in a new tab. Paste, wait for the JSON reply, paste it back here. Or skip Claude and fill the fields by hand with the second button."
+          claudePrompt={buildPillarsPrompt}
+          claudeButtonLabel="Get pillars from Claude"
           promptFile="1-extract-pillars.md"
-          actionLabel="Start with pillars"
+          actionLabel="Start by hand"
           onAction={() => setEditing("pillars")}
         />
       )}
@@ -384,6 +402,53 @@ export default function Strategy() {
               </div>
             ) : (
               <InlineEmpty body="Click Edit to write your voice rules by hand, or run /prompts/2-extract-voice.md to learn them from your top captions." />
+            )}
+          </Section>
+
+          {/* Hooks */}
+          <Section
+            title="Hook library"
+            promptHint="3-hook-patterns.md"
+            onEdit={() => setEditing("hooks")}
+            isEditing={editing === "hooks"}
+          >
+            {editing === "hooks" ? (
+              <HooksEditor
+                initial={hooks}
+                saving={saving}
+                onCancel={() => setEditing(null)}
+                onSave={(next) => save({ hooks: next })}
+              />
+            ) : hasHooks ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                {hooks.map((h, i) => (
+                  <div
+                    key={`${h.text}-${i}`}
+                    style={{
+                      background: "#fff",
+                      border: "1px solid var(--color-border)",
+                      borderLeft: `3px solid ${
+                        h.source === "competitor" ? "var(--color-taupe)" : "var(--color-burgundy)"
+                      }`,
+                      borderRadius: "10px",
+                      padding: "0.75rem 1.1rem",
+                    }}
+                  >
+                    <p style={{ fontSize: "0.9rem", lineHeight: 1.5, marginBottom: "0.3rem" }}>
+                      &ldquo;{h.text}&rdquo;
+                    </p>
+                    <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+                      {h.type && <Pill>{h.type}</Pill>}
+                      {h.source && <Pill tone="dim">{h.source === "mine" ? "Mine" : "Competitor"}</Pill>}
+                      {h.note && (
+                        <span style={{ fontSize: "0.72rem", color: "var(--color-text-dim)" }}>{h.note}</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <InlineEmpty body="Click Edit to log a hook by hand, or paste your scraped data into /prompts/3-hook-patterns.md to surface your top performers." />
             )}
           </Section>
 
@@ -659,6 +724,94 @@ function VoiceEditor({
   );
 }
 
+/* ─────────── Hooks editor ─────────── */
+
+function HooksEditor({
+  initial,
+  saving,
+  onCancel,
+  onSave,
+}: {
+  initial: Hook[];
+  saving: boolean;
+  onCancel: () => void;
+  onSave: (next: Hook[]) => void;
+}) {
+  const [items, setItems] = useState<Hook[]>(
+    initial.length > 0 ? initial : [{ text: "", type: "", source: "mine", note: "" }]
+  );
+
+  const update = (i: number, patch: Partial<Hook>) =>
+    setItems(items.map((h, idx) => (idx === i ? { ...h, ...patch } : h)));
+  const remove = (i: number) => setItems(items.filter((_, idx) => idx !== i));
+  const add = () => setItems([...items, { text: "", type: "", source: "mine", note: "" }]);
+
+  const cleaned = items
+    .map((h) => ({
+      text: h.text.trim(),
+      type: h.type?.trim() || undefined,
+      source: h.source ?? "mine",
+      note: h.note?.trim() || undefined,
+    }))
+    .filter((h) => h.text.length > 0);
+
+  return (
+    <EditorShell
+      saving={saving}
+      onCancel={onCancel}
+      onSave={() => onSave(cleaned)}
+      disabled={cleaned.length === 0}
+    >
+      <p style={{ fontSize: "0.78rem", color: "var(--color-text-dim)", marginBottom: "0.4rem" }}>
+        One hook per row. These are the opening lines (or first 1-2 sentences) of posts that worked, your own or your competitors&apos;.
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+        {items.map((h, i) => (
+          <div
+            key={i}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1.8fr 0.9fr 0.9fr auto",
+              gap: "0.5rem",
+              alignItems: "center",
+            }}
+          >
+            <input
+              type="text"
+              value={h.text}
+              onChange={(e) => update(i, { text: e.target.value })}
+              placeholder='e.g. "The reason your captions don’t convert is not the words. It’s the order."'
+              style={inputStyle}
+            />
+            <input
+              type="text"
+              value={h.type ?? ""}
+              onChange={(e) => update(i, { type: e.target.value })}
+              placeholder="Type (curiosity, contrarian, promise…)"
+              style={inputStyle}
+            />
+            <select
+              value={h.source ?? "mine"}
+              onChange={(e) => update(i, { source: e.target.value as Hook["source"] })}
+              style={selectStyle}
+            >
+              <option value="mine">Mine</option>
+              <option value="competitor">Competitor</option>
+            </select>
+            <button onClick={() => remove(i)} style={iconBtn} aria-label="Remove hook">
+              <X size={14} strokeWidth={2} />
+            </button>
+          </div>
+        ))}
+      </div>
+      <button onClick={add} style={addRowBtn}>
+        <Plus size={13} strokeWidth={2} style={{ marginRight: "0.3rem" }} />
+        Add hook
+      </button>
+    </EditorShell>
+  );
+}
+
 /* ─────────── Campaigns editor ─────────── */
 
 function CampaignsEditor({
@@ -891,6 +1044,24 @@ function InlineEmpty({ body }: { body: string }) {
     >
       {body}
     </div>
+  );
+}
+
+function Pill({ children, tone = "default" }: { children: React.ReactNode; tone?: "default" | "dim" }) {
+  return (
+    <span
+      style={{
+        fontSize: "0.66rem",
+        background: tone === "dim" ? "var(--color-cream)" : "var(--color-burgundy-soft, #fdf0f0)",
+        color: tone === "dim" ? "var(--color-text-dim)" : "var(--color-burgundy)",
+        padding: "0.12rem 0.55rem",
+        borderRadius: "20px",
+        fontWeight: 600,
+        letterSpacing: "0.02em",
+      }}
+    >
+      {children}
+    </span>
   );
 }
 

@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Copy, Check, Trash2 } from "lucide-react";
+import { Plus, Copy, Check, Trash2, List, Calendar as CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
 import config from "../../../config.json";
 import TabContainer from "../shared/TabContainer";
 import TabHeader from "../shared/TabHeader";
 import EmptyState from "../shared/EmptyState";
+import { buildDraftCaptionPrompt } from "../../../lib/promptBuilders";
 
 type DraftStatus = "draft" | "scheduled" | "posted";
 
@@ -18,11 +19,14 @@ type Draft = {
   status: DraftStatus;
   scheduled_for: string | null;
   posted_at: string | null;
+  pillar?: string | null;
   created_at: string;
   updated_at: string;
 };
 
 type NewDraft = Omit<Draft, "id" | "created_at" | "updated_at" | "posted_at" | "scheduled_for">;
+
+type ViewMode = "list" | "calendar";
 
 const TYPE_OPTIONS: Draft["type"][] = ["carousel", "reel", "image", "story"];
 
@@ -51,6 +55,8 @@ export default function Drafts() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"all" | DraftStatus>("draft");
+  const [view, setView] = useState<ViewMode>("list");
+  const [weekOffset, setWeekOffset] = useState(0);
 
   const [addOpen, setAddOpen] = useState(false);
   const [draft, setDraft] = useState<NewDraft>(emptyDraft());
@@ -178,32 +184,57 @@ export default function Drafts() {
             );
           })}
         </div>
-        <button
-          onClick={() => {
-            if (addOpen) setAddOpen(false);
-            else {
-              setDraft(emptyDraft());
-              setAddOpen(true);
-            }
-          }}
-          style={{
-            background: "var(--color-burgundy)",
-            border: "none",
-            color: "#fff",
-            padding: "0.55rem 1.1rem",
-            borderRadius: "10px",
-            fontSize: "0.82rem",
-            cursor: "pointer",
-            fontFamily: "var(--font-body)",
-            fontWeight: 600,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "0.4rem",
-          }}
-        >
-          <Plus size={14} strokeWidth={2.2} />
-          {addOpen ? "Close" : "New draft"}
-        </button>
+        <div style={{ display: "inline-flex", gap: "0.45rem", alignItems: "center" }}>
+          {/* View mode toggle */}
+          <div
+            style={{
+              display: "inline-flex",
+              background: "var(--color-cream)",
+              borderRadius: "10px",
+              padding: "0.2rem",
+              gap: "0.15rem",
+            }}
+          >
+            <ViewToggle
+              active={view === "list"}
+              onClick={() => setView("list")}
+              icon={<List size={13} strokeWidth={2} />}
+              label="List"
+            />
+            <ViewToggle
+              active={view === "calendar"}
+              onClick={() => setView("calendar")}
+              icon={<CalendarIcon size={13} strokeWidth={2} />}
+              label="Calendar"
+            />
+          </div>
+          <button
+            onClick={() => {
+              if (addOpen) setAddOpen(false);
+              else {
+                setDraft(emptyDraft());
+                setAddOpen(true);
+              }
+            }}
+            style={{
+              background: "var(--color-burgundy)",
+              border: "none",
+              color: "#fff",
+              padding: "0.55rem 1.1rem",
+              borderRadius: "10px",
+              fontSize: "0.82rem",
+              cursor: "pointer",
+              fontFamily: "var(--font-body)",
+              fontWeight: 600,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.4rem",
+            }}
+          >
+            <Plus size={14} strokeWidth={2.2} />
+            {addOpen ? "Close" : "New draft"}
+          </button>
+        </div>
       </div>
 
       {/* Add form */}
@@ -331,9 +362,11 @@ export default function Drafts() {
       {!loading && drafts.length === 0 && (
         <EmptyState
           title="No drafts yet"
-          body="Write your first caption here, or have Claude Code draft one for you using the caption prompt. It learns from your voice rules and top hooks."
+          body="Click below to copy a caption prompt pre-filled with your voice rules + top hooks + recent performance. claude.ai opens in a new tab. Paste, get 3 caption options, paste the one you like back here. Or skip Claude and write from scratch with the second button."
+          claudePrompt={() => buildDraftCaptionPrompt("")}
+          claudeButtonLabel="Draft a caption with Claude"
           promptFile="5-draft-caption.md"
-          actionLabel="Write one now"
+          actionLabel="Write one by hand"
           onAction={() => {
             setDraft(emptyDraft());
             setAddOpen(true);
@@ -341,7 +374,7 @@ export default function Drafts() {
         />
       )}
 
-      {!loading && drafts.length > 0 && visible.length === 0 && (
+      {!loading && drafts.length > 0 && view === "list" && visible.length === 0 && (
         <div
           style={{
             background: "var(--color-cream)",
@@ -357,6 +390,16 @@ export default function Drafts() {
         </div>
       )}
 
+      {!loading && drafts.length > 0 && view === "calendar" && (
+        <CalendarView
+          drafts={drafts}
+          weekOffset={weekOffset}
+          onShift={(delta) => setWeekOffset((w) => w + delta)}
+          onReset={() => setWeekOffset(0)}
+        />
+      )}
+
+      {view === "list" && (
       <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
         {visible.map((d) => (
           <div
@@ -438,6 +481,7 @@ export default function Drafts() {
           </div>
         ))}
       </div>
+      )}
 
       {drafts.length > 0 && (
         <p
@@ -537,6 +581,341 @@ function StatusPill({ status }: { status: DraftStatus }) {
     </span>
   );
 }
+
+function ViewToggle({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "0.35rem",
+        background: active ? "#fff" : "transparent",
+        border: "none",
+        color: active ? "var(--color-burgundy)" : "var(--color-text-dim)",
+        padding: "0.35rem 0.7rem",
+        borderRadius: "8px",
+        fontSize: "0.74rem",
+        fontWeight: 600,
+        cursor: "pointer",
+        fontFamily: "var(--font-body)",
+        boxShadow: active ? "var(--shadow-sm)" : "none",
+      }}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+/* ─────────── Calendar week-grid view ─────────── */
+
+function CalendarView({
+  drafts,
+  weekOffset,
+  onShift,
+  onReset,
+}: {
+  drafts: Draft[];
+  weekOffset: number;
+  onShift: (delta: number) => void;
+  onReset: () => void;
+}) {
+  // Monday-start week. We bucket every draft with a scheduled_for into the
+  // matching day cell; unscheduled drafts go into the "Inbox" rail on the
+  // left so they're never invisible.
+  const today = new Date();
+  const weekStart = startOfWeek(today, weekOffset);
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(weekStart.getDate() + i);
+    return d;
+  });
+
+  const scheduled = drafts.filter((d) => !!d.scheduled_for);
+  const byDay = new Map<string, Draft[]>();
+  for (const d of scheduled) {
+    const key = ymd(new Date(d.scheduled_for!));
+    if (!byDay.has(key)) byDay.set(key, []);
+    byDay.get(key)!.push(d);
+  }
+
+  const unscheduled = drafts.filter((d) => !d.scheduled_for && d.status !== "posted").slice(0, 12);
+
+  const fmtWeek = `${days[0].toLocaleDateString("en-GB", { day: "numeric", month: "short" })} – ${days[6].toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`;
+
+  return (
+    <div>
+      {/* Week nav */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "0.6rem",
+          marginBottom: "0.85rem",
+        }}
+      >
+        <button onClick={() => onShift(-1)} style={navBtn} aria-label="Previous week">
+          <ChevronLeft size={14} strokeWidth={2} />
+        </button>
+        <span
+          style={{
+            fontFamily: "var(--font-header)",
+            fontSize: "1rem",
+            color: "var(--color-text)",
+            minWidth: "10rem",
+            textAlign: "center",
+          }}
+        >
+          {fmtWeek}
+        </span>
+        <button onClick={() => onShift(1)} style={navBtn} aria-label="Next week">
+          <ChevronRight size={14} strokeWidth={2} />
+        </button>
+        {weekOffset !== 0 && (
+          <button
+            onClick={onReset}
+            style={{
+              ...navBtn,
+              width: "auto",
+              padding: "0 0.7rem",
+              fontSize: "0.72rem",
+            }}
+          >
+            This week
+          </button>
+        )}
+      </div>
+
+      {/* Grid: 7 day columns + inbox rail */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr",
+          gap: "0.6rem",
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(140px, 0.9fr) repeat(7, minmax(120px, 1fr))",
+            gap: "0.5rem",
+          }}
+          className="cal-grid"
+        >
+          {/* Inbox rail */}
+          <div
+            style={{
+              background: "var(--color-cream)",
+              border: "1px dashed var(--color-border)",
+              borderRadius: "10px",
+              padding: "0.6rem 0.7rem",
+              minHeight: "180px",
+            }}
+          >
+            <p
+              style={{
+                fontSize: "0.62rem",
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                color: "var(--color-taupe)",
+                fontWeight: 700,
+                marginBottom: "0.5rem",
+              }}
+            >
+              Inbox
+            </p>
+            {unscheduled.length === 0 ? (
+              <p style={{ fontSize: "0.72rem", color: "var(--color-text-dim)" }}>
+                Drafts with no scheduled date land here.
+              </p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+                {unscheduled.map((d) => (
+                  <CalendarCard key={d.id} draft={d} compact />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {days.map((d) => {
+            const key = ymd(d);
+            const items = byDay.get(key) ?? [];
+            const isToday = ymd(today) === key;
+            return (
+              <div
+                key={key}
+                style={{
+                  background: "#fff",
+                  border: `1px solid ${isToday ? "var(--color-burgundy)" : "var(--color-border)"}`,
+                  borderRadius: "10px",
+                  padding: "0.6rem 0.7rem",
+                  minHeight: "180px",
+                }}
+              >
+                <p
+                  style={{
+                    fontSize: "0.62rem",
+                    letterSpacing: "0.1em",
+                    textTransform: "uppercase",
+                    color: isToday ? "var(--color-burgundy)" : "var(--color-text-dim)",
+                    fontWeight: 700,
+                    marginBottom: "0.1rem",
+                  }}
+                >
+                  {d.toLocaleDateString("en-GB", { weekday: "short" })}
+                </p>
+                <p
+                  style={{
+                    fontFamily: "var(--font-header)",
+                    fontSize: "1.05rem",
+                    color: isToday ? "var(--color-burgundy)" : "var(--color-text)",
+                    marginBottom: "0.55rem",
+                  }}
+                >
+                  {d.getDate()}
+                </p>
+                {items.length === 0 ? (
+                  <p style={{ fontSize: "0.7rem", color: "var(--color-text-dim)", opacity: 0.7 }}>—</p>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+                    {items.map((it) => (
+                      <CalendarCard key={it.id} draft={it} compact />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <style jsx>{`
+        @media (max-width: 900px) {
+          :global(.cal-grid) {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function CalendarCard({ draft, compact }: { draft: Draft; compact?: boolean }) {
+  const pillarColor = draft.pillar ? colorForPillar(draft.pillar) : "var(--color-taupe)";
+  return (
+    <div
+      title={draft.caption.slice(0, 200)}
+      style={{
+        background: "#fff",
+        border: "1px solid var(--color-border)",
+        borderLeft: `3px solid ${pillarColor}`,
+        borderRadius: "8px",
+        padding: compact ? "0.4rem 0.55rem" : "0.6rem 0.75rem",
+        fontSize: compact ? "0.74rem" : "0.82rem",
+        lineHeight: 1.35,
+        color: "var(--color-text)",
+        cursor: "default",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          gap: "0.3rem",
+          marginBottom: "0.2rem",
+          alignItems: "center",
+        }}
+      >
+        <span
+          style={{
+            fontSize: "0.6rem",
+            background: "var(--color-cream)",
+            color: "var(--color-taupe)",
+            padding: "0.05rem 0.4rem",
+            borderRadius: "20px",
+            fontWeight: 700,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+          }}
+        >
+          {draft.type}
+        </span>
+        {draft.pillar && (
+          <span
+            style={{
+              fontSize: "0.6rem",
+              color: pillarColor,
+              fontWeight: 600,
+            }}
+          >
+            {draft.pillar}
+          </span>
+        )}
+      </div>
+      <p
+        style={{
+          margin: 0,
+          fontWeight: 600,
+          overflow: "hidden",
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+        }}
+      >
+        {draft.hook || draft.caption.slice(0, 60)}
+      </p>
+    </div>
+  );
+}
+
+function startOfWeek(d: Date, weekOffset = 0): Date {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  // Monday-start: getDay() returns 0=Sun..6=Sat; we want Mon=0.
+  const day = (x.getDay() + 6) % 7;
+  x.setDate(x.getDate() - day + weekOffset * 7);
+  return x;
+}
+
+function ymd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * Deterministic pastel color per pillar — same pillar name always gets the
+ * same color across re-renders + sessions, no DB needed.
+ */
+function colorForPillar(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  const hue = hash % 360;
+  return `hsl(${hue}, 45%, 42%)`;
+}
+
+const navBtn: React.CSSProperties = {
+  width: "32px",
+  height: "32px",
+  borderRadius: "8px",
+  background: "#fff",
+  border: "1px solid var(--color-border)",
+  color: "var(--color-text)",
+  cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontFamily: "var(--font-body)",
+};
 
 function Tag({
   children,
