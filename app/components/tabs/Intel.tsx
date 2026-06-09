@@ -1,0 +1,338 @@
+"use client";
+import { useEffect, useState, useCallback } from "react";
+import { ExternalLink } from "lucide-react";
+import config from "../../../config.json";
+import TabContainer from "../shared/TabContainer";
+import TabHeader from "../shared/TabHeader";
+import EmptyState from "../shared/EmptyState";
+
+type TrendingPost = {
+  hook: string;
+  hook_type?: string;
+  type: string;
+  likes: number;
+  comments: number;
+  views?: number;
+  url?: string;
+  timestamp?: string;
+};
+
+type TrendingHook = { hook: string; hook_type?: string; engagement: number };
+
+type CompData = {
+  handle: string;
+  scraped_at?: string;
+  top_posts: TrendingPost[];
+  trending_hooks: TrendingHook[];
+  trending_formats?: Record<string, number>;
+  best_hook_type?: string | null;
+  best_format?: string | null;
+};
+
+function shortDate(ts?: string): string {
+  if (!ts) return "";
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
+/**
+ * Intel tab.
+ *
+ * Up to 5 competitor handles from config.json. For each: top hooks, top posts,
+ * format mix. Filled by /prompts/4-competitor-patterns.md after a scrape.
+ */
+export default function Intel() {
+  const competitors = ((config.competitors ?? []) as string[]).slice(0, 5);
+  const [active, setActive] = useState<string>(competitors[0] ?? "");
+  const [data, setData] = useState<CompData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback((handle: string) => {
+    if (!handle) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setData(null);
+    fetch(`/api/data?tab=intel&handle=${encodeURIComponent(handle)}`)
+      .then((r) => r.json())
+      .then((r) => {
+        setData(r.data ?? null);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (active) load(active);
+  }, [active, load]);
+
+  const hasCompetitors = competitors.length > 0;
+  const hasPosts = (data?.top_posts ?? []).length > 0;
+
+  return (
+    <TabContainer>
+      <TabHeader
+        title="Competitor intel"
+        subtitle="Up to 5 handles from your Settings. For each: top hooks, top posts, what's working."
+        scrapedAt={data?.scraped_at}
+        onScrapeComplete={() => load(active)}
+      />
+
+      {!hasCompetitors && (
+        <EmptyState
+          title="No competitors added"
+          body="Add up to 5 competitor Instagram handles in Settings (or config.json). Once scraped, their top hooks and patterns appear here."
+          promptFile="4-competitor-patterns.md"
+        />
+      )}
+
+      {hasCompetitors && (
+        <>
+          {/* Handle tabs */}
+          <div style={{ display: "flex", gap: "0.4rem", marginBottom: "1.5rem", flexWrap: "wrap" }}>
+            {competitors.map((h) => {
+              const cleaned = h.replace(/^@/, "");
+              const isActive = active === cleaned || active === h;
+              return (
+                <button
+                  key={h}
+                  onClick={() => setActive(cleaned)}
+                  style={{
+                    background: isActive ? "var(--color-burgundy)" : "#fff",
+                    border: `1px solid ${isActive ? "var(--color-burgundy)" : "var(--color-border)"}`,
+                    color: isActive ? "#fff" : "var(--color-text-dim)",
+                    padding: "0.45rem 1.05rem",
+                    borderRadius: "20px",
+                    fontSize: "0.78rem",
+                    cursor: "pointer",
+                    fontFamily: "var(--font-body)",
+                    fontWeight: 600,
+                  }}
+                >
+                  @{cleaned}
+                </button>
+              );
+            })}
+          </div>
+
+          {loading && (
+            <div className="stagger" style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="skeleton" style={{ height: "76px" }} />
+              ))}
+            </div>
+          )}
+
+          {!loading && !hasPosts && (
+            <EmptyState
+              title={`No data for @${active} yet`}
+              body="Run a scrape with the button above, then run the competitor analysis prompt. Top hooks and posts will land here."
+              promptFile="4-competitor-patterns.md"
+            />
+          )}
+
+          {!loading && hasPosts && (
+            <>
+              {/* Summary cards */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                  gap: "1rem",
+                  marginBottom: "1.75rem",
+                }}
+              >
+                <Card label="Top posts" value={`${data!.top_posts.length}`} />
+                <Card label="Best hook type" value={data?.best_hook_type ?? "—"} />
+                <Card label="Best format" value={data?.best_format ?? "—"} />
+                <Card label="Last scraped" value={shortDate(data?.scraped_at) || "—"} />
+              </div>
+
+              {/* Top hooks */}
+              {(data?.trending_hooks ?? []).length > 0 && (
+                <>
+                  <h2 style={{ fontFamily: "var(--font-header)", fontSize: "1.1rem", marginBottom: "0.85rem" }}>
+                    Top hooks
+                  </h2>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "2rem" }}>
+                    {data!.trending_hooks.slice(0, 5).map((h, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          background: "#fff",
+                          border: "1px solid var(--color-border)",
+                          borderRadius: "10px",
+                          padding: "0.8rem 1.15rem",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: "1rem",
+                        }}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          {h.hook_type && (
+                            <span
+                              style={{
+                                fontSize: "0.65rem",
+                                background: "var(--color-cream)",
+                                color: "var(--color-taupe)",
+                                padding: "0.1rem 0.5rem",
+                                borderRadius: "20px",
+                                marginRight: "0.55rem",
+                                fontWeight: 600,
+                              }}
+                            >
+                              {h.hook_type}
+                            </span>
+                          )}
+                          <span style={{ fontSize: "0.85rem" }}>&ldquo;{h.hook.slice(0, 140)}&rdquo;</span>
+                        </div>
+                        <span
+                          style={{
+                            fontSize: "0.78rem",
+                            color: "var(--color-taupe)",
+                            fontFamily: "var(--font-header)",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {h.engagement.toLocaleString()}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {/* Top posts */}
+              <h2 style={{ fontFamily: "var(--font-header)", fontSize: "1.1rem", marginBottom: "0.85rem" }}>
+                Top posts
+              </h2>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
+                {data!.top_posts.slice(0, 8).map((post, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      background: "#fff",
+                      border: "1px solid var(--color-border)",
+                      borderRadius: "10px",
+                      padding: "0.85rem 1.15rem",
+                      boxShadow: "var(--shadow-sm)",
+                    }}
+                  >
+                    <div style={{ display: "flex", gap: "0.4rem", marginBottom: "0.35rem", flexWrap: "wrap" }}>
+                      <Tag>{post.type}</Tag>
+                      {post.hook_type && <Tag tone="dim">{post.hook_type}</Tag>}
+                    </div>
+                    <p style={{ fontSize: "0.86rem", marginBottom: "0.3rem", lineHeight: 1.45 }}>
+                      {post.url ? (
+                        <a
+                          href={post.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ color: "var(--color-text)", textDecoration: "none" }}
+                        >
+                          {post.hook.slice(0, 160)}
+                        </a>
+                      ) : (
+                        post.hook.slice(0, 160)
+                      )}
+                    </p>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        fontSize: "0.74rem",
+                        color: "var(--color-text-dim)",
+                      }}
+                    >
+                      <span>
+                        {post.likes.toLocaleString()} likes · {post.comments} comments
+                        {post.timestamp && (
+                          <span style={{ color: "var(--color-taupe)", marginLeft: "0.5rem" }}>
+                            · {shortDate(post.timestamp)}
+                          </span>
+                        )}
+                      </span>
+                      {post.url && (
+                        <a
+                          href={post.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            color: "var(--color-burgundy)",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "0.3rem",
+                            textDecoration: "none",
+                          }}
+                        >
+                          Open <ExternalLink size={11} strokeWidth={2} />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </TabContainer>
+  );
+}
+
+function Card({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      style={{
+        background: "#fff",
+        border: "1px solid var(--color-border)",
+        borderRadius: "12px",
+        padding: "1rem 1.15rem",
+        boxShadow: "var(--shadow-sm)",
+      }}
+    >
+      <p
+        style={{
+          fontSize: "0.62rem",
+          color: "var(--color-text-dim)",
+          letterSpacing: "0.14em",
+          textTransform: "uppercase",
+          marginBottom: "0.35rem",
+          fontWeight: 700,
+        }}
+      >
+        {label}
+      </p>
+      <p
+        style={{
+          fontFamily: "var(--font-header)",
+          fontSize: "1.25rem",
+          color: value === "—" ? "var(--color-taupe)" : "var(--color-text)",
+        }}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function Tag({ children, tone = "default" }: { children: React.ReactNode; tone?: "default" | "dim" }) {
+  return (
+    <span
+      style={{
+        fontSize: "0.65rem",
+        background: "var(--color-cream)",
+        color: tone === "dim" ? "var(--color-text-dim)" : "var(--color-taupe)",
+        padding: "0.1rem 0.5rem",
+        borderRadius: "20px",
+        fontWeight: 600,
+      }}
+    >
+      {children}
+    </span>
+  );
+}

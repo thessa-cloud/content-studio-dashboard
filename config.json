@@ -1,0 +1,42 @@
+{
+  "_comment": "Customize this file once after deploying. Claude Code can also update this for you, just ask. The dashboard reads from this file on every render.",
+
+  "brandName": "Your Brand",
+  "tagline": "Content intelligence dashboard",
+
+  "instagramHandle": "your_instagram_handle",
+
+  "competitors": [],
+
+  "triggerWords": [
+    "STUDIO",
+    "BUNDLE",
+    "WAITLIST"
+  ],
+
+  "pillars": [],
+
+  "voice": {
+    "tone": "warm, declarative, claiming",
+    "rules": [
+      "No em dashes",
+      "No staccato chains (3+ short sentences in a row)",
+      "Write the physical scene, not a label",
+      "CTA always names the action"
+    ]
+  },
+
+  "theme": {
+    "accent": "#741616",
+    "accentLight": "#9a2020",
+    "accentSoft": "#fdf0f0",
+    "cream": "#f2ece3",
+    "creamDeep": "#ebe3d6",
+    "bg": "#faf7f4"
+  },
+
+  "scrape": {
+    "schedule": "manual",
+    "limit": 30
+  }
+}

@@ -1,0 +1,1012 @@
+"use client";
+import { useEffect, useState } from "react";
+import { Sparkles, Pencil, Plus, X, Check } from "lucide-react";
+import config from "../../../config.json";
+import TabContainer from "../shared/TabContainer";
+import TabHeader from "../shared/TabHeader";
+import EmptyState from "../shared/EmptyState";
+
+type Pillar = {
+  name: string;
+  description?: string;
+  share?: number; // 0..1
+  color?: string;
+};
+
+type Campaign = {
+  name: string;
+  status: "active" | "planned" | "done";
+  note?: string;
+};
+
+type Voice = {
+  tone?: string | null;
+  rules?: string[];
+  signature_phrases?: string[];
+  forbidden?: string[];
+};
+
+type StrategyData = {
+  id?: string;
+  pillars: Pillar[];
+  voice?: Voice;
+  voice_rules?: string[];
+  voice_tone?: string | null;
+  voice_signature_phrases?: string[];
+  voice_forbidden?: string[];
+  campaigns: Campaign[];
+  ica_notes?: string | null;
+  scraped_at?: string | null;
+  updated_at?: string | null;
+};
+
+type EditSection = "pillars" | "voice" | "campaigns" | "ica" | null;
+
+/**
+ * Strategy tab.
+ *
+ * What lives here:
+ *  - Content pillars (extracted by /prompts/1-extract-pillars.md, editable here)
+ *  - Voice rules     (extracted by /prompts/2-extract-voice.md, editable here)
+ *  - Current campaigns + ICA notes (maintained by /prompts/7-weekly-review.md,
+ *    editable here)
+ *
+ * Each section has its own inline edit mode. Saves PATCH the most recent
+ * strategy row, or POST a brand-new one on first install.
+ */
+export default function Strategy() {
+  const [data, setData] = useState<StrategyData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState<EditSection>(null);
+
+  const load = (signal?: AbortSignal) => {
+    setLoading(true);
+    fetch("/api/data?tab=strategy", { signal })
+      .then((r) => r.json())
+      .then((r) => {
+        if (signal?.aborted) return;
+        setData(r.data ?? null);
+        setLoading(false);
+      })
+      .catch((err) => {
+        if (err?.name === "AbortError") return;
+        setLoading(false);
+      });
+  };
+
+  // Abort the in-flight fetch on unmount so we never setState on a dead
+  // component (tab switch mid-load, navigation away during save reload).
+  useEffect(() => {
+    const ac = new AbortController();
+    load(ac.signal);
+    return () => ac.abort();
+  }, []);
+
+  // Normalize the GET response shape into the UI-side flat fields so a fresh
+  // POST response can be slotted straight into `data` without waiting for the
+  // next load() round-trip — prevents the second click from triggering a
+  // second POST while `data.id` is still undefined.
+  function normalizeRow(row: Record<string, unknown> | null): StrategyData | null {
+    if (!row) return null;
+    const voice = (row.voice && typeof row.voice === "object" && !Array.isArray(row.voice)
+      ? (row.voice as Voice)
+      : {}) as Voice;
+    return {
+      ...(row as unknown as StrategyData),
+      voice_rules: Array.isArray(voice.rules) ? voice.rules : [],
+      voice_tone: typeof voice.tone === "string" ? voice.tone : null,
+      voice_signature_phrases: Array.isArray(voice.signature_phrases) ? voice.signature_phrases : [],
+      voice_forbidden: Array.isArray(voice.forbidden) ? voice.forbidden : [],
+    };
+  }
+
+  async function save(patch: Partial<StrategyData> & { voice?: Voice }) {
+    if (saving) return; // Hard guard against double-clicks before saving flips
+    setSaving(true);
+    try {
+      if (data?.id) {
+        // Existing row → PATCH
+        const res = await fetch("/api/data?tab=strategy", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: data.id, ...patch }),
+        });
+        if (res.ok) {
+          const json = await res.json().catch(() => ({}));
+          // Slot the fresh row straight in so subsequent edits PATCH instead
+          // of POST-ing a duplicate.
+          const normalized = normalizeRow(json?.data ?? null);
+          if (normalized) setData(normalized);
+          setEditing(null);
+        }
+      } else {
+        // First save → POST a brand-new row
+        const res = await fetch("/api/data?tab=strategy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pillars: patch.pillars ?? [],
+            voice: patch.voice ?? {},
+            campaigns: patch.campaigns ?? [],
+            ica_notes: patch.ica_notes ?? null,
+          }),
+        });
+        if (res.ok) {
+          const json = await res.json().catch(() => ({}));
+          // Critical: the POST response carries the new row's id. Storing it
+          // immediately means a fast second Save click goes through PATCH, not
+          // a second POST that would leave duplicate rows in the table.
+          const normalized = normalizeRow(json?.data ?? null);
+          if (normalized) setData(normalized);
+          setEditing(null);
+        }
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const pillars = data?.pillars ?? [];
+  const campaigns = data?.campaigns ?? [];
+  const voiceRules = data?.voice_rules ?? config.voice?.rules ?? [];
+  const voiceTone = data?.voice_tone ?? null;
+  const voiceSignaturePhrases = data?.voice_signature_phrases ?? [];
+  const voiceForbidden = data?.voice_forbidden ?? [];
+
+  const hasPillars = pillars.length > 0;
+  const hasVoice = voiceRules.length > 0 || !!voiceTone;
+  const hasCampaigns = campaigns.length > 0;
+  const hasAny = hasPillars || hasVoice || hasCampaigns || !!data?.ica_notes;
+
+  return (
+    <TabContainer>
+      <TabHeader
+        title="Strategy"
+        subtitle="Your content pillars, voice rules, and current campaigns. Edit them by hand here, or let Claude Code fill them by running the prompts in /prompts/."
+        scrapedAt={data?.scraped_at}
+        onScrapeComplete={load}
+      />
+
+      {loading && (
+        <div className="stagger" style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="skeleton" style={{ height: "120px" }} />
+          ))}
+        </div>
+      )}
+
+      {!loading && !hasAny && editing === null && (
+        <EmptyState
+          title="No strategy mapped yet"
+          body="Fill these by hand using the Edit buttons below, or let Claude Code read your last 30 posts and write them for you with the pillar prompt."
+          promptFile="1-extract-pillars.md"
+          actionLabel="Start with pillars"
+          onAction={() => setEditing("pillars")}
+        />
+      )}
+
+      {!loading && (hasAny || editing !== null) && (
+        <>
+          {/* Pillars */}
+          <Section
+            title="Content pillars"
+            promptHint="1-extract-pillars.md"
+            onEdit={() => setEditing("pillars")}
+            isEditing={editing === "pillars"}
+          >
+            {editing === "pillars" ? (
+              <PillarsEditor
+                initial={pillars}
+                saving={saving}
+                onCancel={() => setEditing(null)}
+                onSave={(next) => save({ pillars: next })}
+              />
+            ) : hasPillars ? (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                  gap: "1rem",
+                }}
+              >
+                {pillars.map((p) => (
+                  <div
+                    key={p.name}
+                    style={{
+                      background: "#fff",
+                      border: "1px solid var(--color-border)",
+                      borderLeft: `4px solid ${p.color ?? "var(--color-burgundy)"}`,
+                      borderRadius: "12px",
+                      padding: "1rem 1.25rem",
+                      boxShadow: "var(--shadow-sm)",
+                    }}
+                  >
+                    <p style={{ fontFamily: "var(--font-header)", fontSize: "1.1rem", marginBottom: "0.3rem" }}>
+                      {p.name}
+                    </p>
+                    {p.description && (
+                      <p style={{ fontSize: "0.82rem", color: "var(--color-text-dim)", lineHeight: 1.5 }}>
+                        {p.description}
+                      </p>
+                    )}
+                    {typeof p.share === "number" && (
+                      <p style={{ fontSize: "0.7rem", color: "var(--color-taupe)", marginTop: "0.5rem" }}>
+                        {Math.round(p.share * 100)}% of recent posts
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <InlineEmpty body="Click Edit to add your first pillar, or run /prompts/1-extract-pillars.md to extract them automatically." />
+            )}
+          </Section>
+
+          {/* Voice */}
+          <Section
+            title="Voice rules"
+            promptHint="2-extract-voice.md"
+            onEdit={() => setEditing("voice")}
+            isEditing={editing === "voice"}
+          >
+            {editing === "voice" ? (
+              <VoiceEditor
+                initialTone={voiceTone ?? ""}
+                initialRules={voiceRules}
+                initialSignaturePhrases={voiceSignaturePhrases}
+                initialForbidden={voiceForbidden}
+                saving={saving}
+                onCancel={() => setEditing(null)}
+                onSave={(voice) => save({ voice })}
+              />
+            ) : hasVoice ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                {voiceTone && (
+                  <div
+                    style={{
+                      background: "var(--color-cream)",
+                      borderRadius: "8px",
+                      padding: "0.7rem 1rem",
+                      fontSize: "0.85rem",
+                      color: "var(--color-text)",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: "0.65rem",
+                        letterSpacing: "0.12em",
+                        textTransform: "uppercase",
+                        color: "var(--color-taupe)",
+                        fontWeight: 700,
+                        marginRight: "0.6rem",
+                      }}
+                    >
+                      Tone
+                    </span>
+                    {voiceTone}
+                  </div>
+                )}
+
+                {voiceRules.length > 0 && (
+                  <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "0.5rem" }}>
+                    {voiceRules.map((rule) => (
+                      <li
+                        key={rule}
+                        style={{
+                          background: "#fff",
+                          border: "1px solid var(--color-border)",
+                          borderRadius: "8px",
+                          padding: "0.6rem 0.95rem",
+                          fontSize: "0.88rem",
+                          color: "var(--color-text)",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.55rem",
+                        }}
+                      >
+                        <Sparkles size={13} strokeWidth={1.8} style={{ color: "var(--color-taupe)", flexShrink: 0 }} />
+                        {rule}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {voiceSignaturePhrases.length > 0 && (
+                  <div>
+                    <p
+                      style={{
+                        fontSize: "0.65rem",
+                        letterSpacing: "0.12em",
+                        textTransform: "uppercase",
+                        color: "var(--color-taupe)",
+                        fontWeight: 700,
+                        marginBottom: "0.45rem",
+                      }}
+                    >
+                      Signature phrases
+                    </p>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+                      {voiceSignaturePhrases.map((phrase) => (
+                        <span
+                          key={phrase}
+                          style={{
+                            background: "var(--color-burgundy-soft, #fdf0f0)",
+                            color: "var(--color-burgundy)",
+                            padding: "0.25rem 0.7rem",
+                            borderRadius: "20px",
+                            fontSize: "0.78rem",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {phrase}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {voiceForbidden.length > 0 && (
+                  <div>
+                    <p
+                      style={{
+                        fontSize: "0.65rem",
+                        letterSpacing: "0.12em",
+                        textTransform: "uppercase",
+                        color: "var(--color-taupe)",
+                        fontWeight: 700,
+                        marginBottom: "0.45rem",
+                      }}
+                    >
+                      Forbidden
+                    </p>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+                      {voiceForbidden.map((item) => (
+                        <span
+                          key={item}
+                          style={{
+                            background: "var(--color-cream)",
+                            color: "var(--color-text-dim)",
+                            padding: "0.25rem 0.7rem",
+                            borderRadius: "20px",
+                            fontSize: "0.78rem",
+                            fontWeight: 600,
+                            textDecoration: "line-through",
+                            textDecorationThickness: "1px",
+                          }}
+                        >
+                          {item}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <InlineEmpty body="Click Edit to write your voice rules by hand, or run /prompts/2-extract-voice.md to learn them from your top captions." />
+            )}
+          </Section>
+
+          {/* Campaigns */}
+          <Section
+            title="Current campaigns"
+            promptHint="7-weekly-review.md"
+            onEdit={() => setEditing("campaigns")}
+            isEditing={editing === "campaigns"}
+          >
+            {editing === "campaigns" ? (
+              <CampaignsEditor
+                initial={campaigns}
+                saving={saving}
+                onCancel={() => setEditing(null)}
+                onSave={(next) => save({ campaigns: next })}
+              />
+            ) : hasCampaigns ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
+                {campaigns.map((c) => (
+                  <div
+                    key={c.name}
+                    style={{
+                      background: "#fff",
+                      border: "1px solid var(--color-border)",
+                      borderRadius: "10px",
+                      padding: "0.75rem 1.1rem",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: "1rem",
+                    }}
+                  >
+                    <div>
+                      <p style={{ fontSize: "0.95rem", fontWeight: 600 }}>{c.name}</p>
+                      {c.note && (
+                        <p style={{ fontSize: "0.78rem", color: "var(--color-text-dim)", marginTop: "0.2rem" }}>
+                          {c.note}
+                        </p>
+                      )}
+                    </div>
+                    <CampaignPill status={c.status} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <InlineEmpty body="Click Edit to log a campaign, or run /prompts/7-weekly-review.md to capture this week's intent." />
+            )}
+          </Section>
+
+          {/* ICA notes */}
+          <Section
+            title="ICA notes"
+            promptHint="7-weekly-review.md"
+            onEdit={() => setEditing("ica")}
+            isEditing={editing === "ica"}
+          >
+            {editing === "ica" ? (
+              <IcaEditor
+                initial={data?.ica_notes ?? ""}
+                saving={saving}
+                onCancel={() => setEditing(null)}
+                onSave={(next) => save({ ica_notes: next })}
+              />
+            ) : data?.ica_notes ? (
+              <div
+                style={{
+                  background: "var(--color-cream)",
+                  border: "1px solid var(--color-border)",
+                  borderRadius: "10px",
+                  padding: "1rem 1.25rem",
+                  fontSize: "0.88rem",
+                  lineHeight: 1.6,
+                  color: "var(--color-text)",
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {data.ica_notes}
+              </div>
+            ) : (
+              <InlineEmpty body="Click Edit to describe your ideal customer in your own words." />
+            )}
+          </Section>
+        </>
+      )}
+    </TabContainer>
+  );
+}
+
+/* ─────────── Section frame with Edit toggle ─────────── */
+
+function Section({
+  title,
+  promptHint,
+  onEdit,
+  isEditing,
+  children,
+}: {
+  title: string;
+  promptHint?: string;
+  onEdit?: () => void;
+  isEditing?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <section style={{ marginBottom: "2.25rem" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+          marginBottom: "0.85rem",
+          gap: "0.6rem",
+          flexWrap: "wrap",
+        }}
+      >
+        <h2 style={{ fontFamily: "var(--font-header)", fontSize: "1.2rem", margin: 0 }}>{title}</h2>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.65rem" }}>
+          {promptHint && (
+            <span style={{ fontSize: "0.7rem", color: "var(--color-text-dim)", fontFamily: "monospace" }}>
+              /prompts/{promptHint}
+            </span>
+          )}
+          {onEdit && !isEditing && (
+            <button onClick={onEdit} style={editBtn} aria-label={`Edit ${title}`}>
+              <Pencil size={12} strokeWidth={1.8} style={{ marginRight: "0.3rem" }} />
+              Edit
+            </button>
+          )}
+        </div>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/* ─────────── Pillars editor ─────────── */
+
+function PillarsEditor({
+  initial,
+  saving,
+  onCancel,
+  onSave,
+}: {
+  initial: Pillar[];
+  saving: boolean;
+  onCancel: () => void;
+  onSave: (next: Pillar[]) => void;
+}) {
+  const [items, setItems] = useState<Pillar[]>(
+    initial.length > 0 ? initial : [{ name: "", description: "" }]
+  );
+
+  const update = (i: number, patch: Partial<Pillar>) =>
+    setItems(items.map((p, idx) => (idx === i ? { ...p, ...patch } : p)));
+  const remove = (i: number) => setItems(items.filter((_, idx) => idx !== i));
+  const add = () => setItems([...items, { name: "", description: "" }]);
+
+  const cleaned = items
+    .map((p) => ({ ...p, name: p.name.trim(), description: p.description?.trim() || undefined }))
+    .filter((p) => p.name.length > 0);
+
+  return (
+    <EditorShell saving={saving} onCancel={onCancel} onSave={() => onSave(cleaned)} disabled={cleaned.length === 0}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+        {items.map((p, i) => (
+          <div
+            key={i}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1.4fr auto",
+              gap: "0.5rem",
+              alignItems: "center",
+            }}
+          >
+            <input
+              type="text"
+              value={p.name}
+              onChange={(e) => update(i, { name: e.target.value })}
+              placeholder="Pillar name (e.g. Mindset)"
+              style={inputStyle}
+            />
+            <input
+              type="text"
+              value={p.description ?? ""}
+              onChange={(e) => update(i, { description: e.target.value })}
+              placeholder="One-line description (optional)"
+              style={inputStyle}
+            />
+            <button onClick={() => remove(i)} style={iconBtn} aria-label="Remove pillar">
+              <X size={14} strokeWidth={2} />
+            </button>
+          </div>
+        ))}
+      </div>
+      <button onClick={add} style={addRowBtn}>
+        <Plus size={13} strokeWidth={2} style={{ marginRight: "0.3rem" }} />
+        Add pillar
+      </button>
+    </EditorShell>
+  );
+}
+
+/* ─────────── Voice editor ─────────── */
+
+function VoiceEditor({
+  initialTone,
+  initialRules,
+  initialSignaturePhrases,
+  initialForbidden,
+  saving,
+  onCancel,
+  onSave,
+}: {
+  initialTone: string;
+  initialRules: string[];
+  initialSignaturePhrases: string[];
+  initialForbidden: string[];
+  saving: boolean;
+  onCancel: () => void;
+  onSave: (voice: Voice) => void;
+}) {
+  const [tone, setTone] = useState(initialTone);
+  const [rules, setRules] = useState<string[]>(initialRules.length ? initialRules : [""]);
+  const [signaturePhrases, setSignaturePhrases] = useState<string[]>(
+    initialSignaturePhrases.length ? initialSignaturePhrases : [""]
+  );
+  const [forbidden, setForbidden] = useState<string[]>(initialForbidden.length ? initialForbidden : [""]);
+
+  const clean = (arr: string[]) => arr.map((s) => s.trim()).filter((s) => s.length > 0);
+
+  return (
+    <EditorShell
+      saving={saving}
+      onCancel={onCancel}
+      onSave={() =>
+        onSave({
+          tone: tone.trim() || undefined,
+          rules: clean(rules),
+          signature_phrases: clean(signaturePhrases),
+          forbidden: clean(forbidden),
+        })
+      }
+      disabled={
+        !tone.trim() &&
+        clean(rules).length === 0 &&
+        clean(signaturePhrases).length === 0 &&
+        clean(forbidden).length === 0
+      }
+    >
+      <FieldLabel>Tone (one short phrase)</FieldLabel>
+      <input
+        type="text"
+        value={tone}
+        onChange={(e) => setTone(e.target.value)}
+        placeholder='e.g. "warm, declarative, direct"'
+        style={inputStyle}
+      />
+
+      <FieldLabel>Rules (do/don't statements)</FieldLabel>
+      <StringList values={rules} onChange={setRules} placeholder='e.g. "Always opens with a declaration, never a question"' />
+
+      <FieldLabel>Signature phrases</FieldLabel>
+      <StringList
+        values={signaturePhrases}
+        onChange={setSignaturePhrases}
+        placeholder="e.g. that one phrase you keep coming back to"
+      />
+
+      <FieldLabel>Forbidden (words/punctuation you never use)</FieldLabel>
+      <StringList values={forbidden} onChange={setForbidden} placeholder='e.g. "no em dashes", "no hashtag spam"' />
+    </EditorShell>
+  );
+}
+
+/* ─────────── Campaigns editor ─────────── */
+
+function CampaignsEditor({
+  initial,
+  saving,
+  onCancel,
+  onSave,
+}: {
+  initial: Campaign[];
+  saving: boolean;
+  onCancel: () => void;
+  onSave: (next: Campaign[]) => void;
+}) {
+  const [items, setItems] = useState<Campaign[]>(
+    initial.length > 0 ? initial : [{ name: "", status: "active", note: "" }]
+  );
+
+  const update = (i: number, patch: Partial<Campaign>) =>
+    setItems(items.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
+  const remove = (i: number) => setItems(items.filter((_, idx) => idx !== i));
+  const add = () => setItems([...items, { name: "", status: "planned", note: "" }]);
+
+  const cleaned = items
+    .map((c) => ({ ...c, name: c.name.trim(), note: c.note?.trim() || undefined }))
+    .filter((c) => c.name.length > 0);
+
+  return (
+    <EditorShell
+      saving={saving}
+      onCancel={onCancel}
+      onSave={() => onSave(cleaned)}
+      disabled={cleaned.length === 0}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+        {items.map((c, i) => (
+          <div
+            key={i}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1.2fr 1.6fr auto auto",
+              gap: "0.5rem",
+              alignItems: "center",
+            }}
+          >
+            <input
+              type="text"
+              value={c.name}
+              onChange={(e) => update(i, { name: e.target.value })}
+              placeholder="Campaign name"
+              style={inputStyle}
+            />
+            <input
+              type="text"
+              value={c.note ?? ""}
+              onChange={(e) => update(i, { note: e.target.value })}
+              placeholder="Note (optional)"
+              style={inputStyle}
+            />
+            <select
+              value={c.status}
+              onChange={(e) => update(i, { status: e.target.value as Campaign["status"] })}
+              style={selectStyle}
+            >
+              <option value="active">Active</option>
+              <option value="planned">Planned</option>
+              <option value="done">Done</option>
+            </select>
+            <button onClick={() => remove(i)} style={iconBtn} aria-label="Remove campaign">
+              <X size={14} strokeWidth={2} />
+            </button>
+          </div>
+        ))}
+      </div>
+      <button onClick={add} style={addRowBtn}>
+        <Plus size={13} strokeWidth={2} style={{ marginRight: "0.3rem" }} />
+        Add campaign
+      </button>
+    </EditorShell>
+  );
+}
+
+/* ─────────── ICA editor ─────────── */
+
+function IcaEditor({
+  initial,
+  saving,
+  onCancel,
+  onSave,
+}: {
+  initial: string;
+  saving: boolean;
+  onCancel: () => void;
+  onSave: (next: string) => void;
+}) {
+  const [text, setText] = useState(initial);
+  return (
+    <EditorShell
+      saving={saving}
+      onCancel={onCancel}
+      onSave={() => onSave(text.trim())}
+      disabled={false}
+    >
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="Who is this content for? Their situation, their pain, their words. Write like you're describing one person."
+        rows={8}
+        style={{ ...inputStyle, resize: "vertical" }}
+      />
+    </EditorShell>
+  );
+}
+
+/* ─────────── Editor shell (Save / Cancel footer) ─────────── */
+
+function EditorShell({
+  saving,
+  onCancel,
+  onSave,
+  disabled,
+  children,
+}: {
+  saving: boolean;
+  onCancel: () => void;
+  onSave: () => void;
+  disabled: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        background: "#fff",
+        border: "1px solid var(--color-burgundy)",
+        borderRadius: "14px",
+        padding: "1.25rem 1.5rem",
+        boxShadow: "var(--shadow-sm)",
+      }}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>{children}</div>
+      <div style={{ display: "flex", gap: "0.5rem", marginTop: "1.1rem" }}>
+        <button
+          onClick={onSave}
+          disabled={saving || disabled}
+          style={{
+            ...primaryBtn,
+            opacity: saving || disabled ? 0.55 : 1,
+            cursor: saving || disabled ? "not-allowed" : "pointer",
+          }}
+        >
+          <Check size={13} strokeWidth={2.2} style={{ marginRight: "0.3rem" }} />
+          {saving ? "Saving..." : "Save"}
+        </button>
+        <button onClick={onCancel} style={ghostBtn} disabled={saving}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────── String-list helper (rules / phrases / forbidden) ─────────── */
+
+function StringList({
+  values,
+  onChange,
+  placeholder,
+}: {
+  values: string[];
+  onChange: (next: string[]) => void;
+  placeholder: string;
+}) {
+  const update = (i: number, v: string) => onChange(values.map((s, idx) => (idx === i ? v : s)));
+  const remove = (i: number) => onChange(values.filter((_, idx) => idx !== i));
+  const add = () => onChange([...values, ""]);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+      {values.map((v, i) => (
+        <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "0.5rem", alignItems: "center" }}>
+          <input
+            type="text"
+            value={v}
+            onChange={(e) => update(i, e.target.value)}
+            placeholder={placeholder}
+            style={inputStyle}
+          />
+          <button onClick={() => remove(i)} style={iconBtn} aria-label="Remove">
+            <X size={14} strokeWidth={2} />
+          </button>
+        </div>
+      ))}
+      <button onClick={add} style={{ ...addRowBtn, alignSelf: "flex-start" }}>
+        <Plus size={13} strokeWidth={2} style={{ marginRight: "0.3rem" }} />
+        Add
+      </button>
+    </div>
+  );
+}
+
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p
+      style={{
+        fontSize: "0.65rem",
+        letterSpacing: "0.12em",
+        textTransform: "uppercase",
+        color: "var(--color-taupe)",
+        fontWeight: 700,
+        margin: "0.4rem 0 0.25rem",
+      }}
+    >
+      {children}
+    </p>
+  );
+}
+
+/* ─────────── Inline empty + campaign pill ─────────── */
+
+function InlineEmpty({ body }: { body: string }) {
+  return (
+    <div
+      style={{
+        background: "var(--color-cream)",
+        border: "1px dashed var(--color-border)",
+        borderRadius: "10px",
+        padding: "1rem 1.25rem",
+        fontSize: "0.82rem",
+        color: "var(--color-text-dim)",
+      }}
+    >
+      {body}
+    </div>
+  );
+}
+
+function CampaignPill({ status }: { status: Campaign["status"] }) {
+  const map = {
+    active: { bg: "var(--color-burgundy)", color: "#fff", label: "Active" },
+    planned: { bg: "var(--color-cream)", color: "var(--color-burgundy)", label: "Planned" },
+    done: { bg: "var(--color-cream)", color: "var(--color-text-dim)", label: "Done" },
+  } as const;
+  const s = map[status];
+  return (
+    <span
+      style={{
+        background: s.bg,
+        color: s.color,
+        padding: "0.2rem 0.65rem",
+        borderRadius: "20px",
+        fontSize: "0.72rem",
+        fontWeight: 600,
+        letterSpacing: "0.04em",
+        flexShrink: 0,
+      }}
+    >
+      {s.label}
+    </span>
+  );
+}
+
+/* ─────────── Shared styles ─────────── */
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "0.55rem 0.85rem",
+  border: "1px solid var(--color-border)",
+  borderRadius: "8px",
+  fontSize: "0.85rem",
+  fontFamily: "var(--font-body)",
+  background: "#fff",
+  color: "var(--color-text)",
+  boxSizing: "border-box",
+  outline: "none",
+};
+
+const selectStyle: React.CSSProperties = {
+  padding: "0.5rem 0.75rem",
+  border: "1px solid var(--color-border)",
+  borderRadius: "8px",
+  fontSize: "0.82rem",
+  fontFamily: "var(--font-body)",
+  background: "#fff",
+  color: "var(--color-text)",
+  cursor: "pointer",
+};
+
+const primaryBtn: React.CSSProperties = {
+  background: "var(--color-burgundy)",
+  border: "none",
+  color: "#fff",
+  padding: "0.5rem 1.1rem",
+  borderRadius: "8px",
+  fontSize: "0.82rem",
+  fontFamily: "var(--font-body)",
+  fontWeight: 600,
+  display: "inline-flex",
+  alignItems: "center",
+};
+
+const ghostBtn: React.CSSProperties = {
+  background: "var(--color-cream)",
+  border: "1px solid var(--color-border)",
+  color: "var(--color-text-dim)",
+  padding: "0.45rem 0.95rem",
+  borderRadius: "8px",
+  fontSize: "0.8rem",
+  cursor: "pointer",
+  fontFamily: "var(--font-body)",
+};
+
+const editBtn: React.CSSProperties = {
+  background: "var(--color-cream)",
+  border: "1px solid var(--color-border)",
+  color: "var(--color-burgundy)",
+  padding: "0.3rem 0.75rem",
+  borderRadius: "8px",
+  fontSize: "0.72rem",
+  cursor: "pointer",
+  fontFamily: "var(--font-body)",
+  fontWeight: 600,
+  display: "inline-flex",
+  alignItems: "center",
+};
+
+const iconBtn: React.CSSProperties = {
+  background: "transparent",
+  border: "1px solid var(--color-border)",
+  color: "var(--color-text-dim)",
+  width: "32px",
+  height: "32px",
+  borderRadius: "8px",
+  cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
+
+const addRowBtn: React.CSSProperties = {
+  background: "transparent",
+  border: "1px dashed var(--color-border)",
+  color: "var(--color-burgundy)",
+  padding: "0.4rem 0.85rem",
+  borderRadius: "8px",
+  fontSize: "0.78rem",
+  fontFamily: "var(--font-body)",
+  fontWeight: 600,
+  cursor: "pointer",
+  marginTop: "0.6rem",
+  display: "inline-flex",
+  alignItems: "center",
+};
