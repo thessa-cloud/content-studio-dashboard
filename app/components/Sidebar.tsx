@@ -46,6 +46,13 @@ export default function Sidebar({ active, onSelect, isOpen, onClose }: SidebarPr
   const [brandName, setBrandName] = useState<string>(
     config.brandName || "Your Brand"
   );
+  // Footer status pill, "Live · synced with your scrapes" was hard-coded
+  // even on a fresh install, which lies to the customer. Thessa: "dit moet
+  // op offline staat als er nog geen sync is". We seed null, fetch the most
+  // recent scrape on mount, AND listen for a `cs-scrape:done` event so the
+  // pill flips Live the moment a first scrape finishes from anywhere in
+  // the app (no page reload needed).
+  const [scrapedAt, setScrapedAt] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     async function refresh() {
@@ -60,12 +67,33 @@ export default function Sidebar({ active, onSelect, isOpen, onClose }: SidebarPr
         // Network or parse error — keep whatever brand name we already had.
       }
     }
+    async function refreshScrapeMeta() {
+      try {
+        const r = await fetch("/api/data?tab=scrape-meta", { cache: "no-store" });
+        if (!r.ok) return;
+        const j = (await r.json()) as { data?: { scraped_at?: string | null } | null };
+        if (cancelled) return;
+        const at = j?.data?.scraped_at;
+        setScrapedAt(typeof at === "string" && at.length > 0 ? at : null);
+      } catch {
+        // Network/parse failure leaves the pill in its previous state. We
+        // never want to falsely advertise "Live" on an offline install,
+        // so the default null already shows "Offline" until proven wrong.
+      }
+    }
     refresh();
+    refreshScrapeMeta();
     // Settings.tsx dispatches this event after a successful save (Supabase
     // or localStorage), so the sidebar picks up the new value without a
     // page reload.
     const onSettingsSaved = () => refresh();
     window.addEventListener("cs-settings:saved", onSettingsSaved);
+    // ScrapeNowButton (and any other writer of scrape_log) should dispatch
+    // `cs-scrape:done` after a successful scrape so the footer flips to
+    // Live without a reload. If nothing dispatches yet we still update on
+    // next mount.
+    const onScrapeDone = () => refreshScrapeMeta();
+    window.addEventListener("cs-scrape:done", onScrapeDone);
     // If a second tab edited settings (localStorage path), the `storage`
     // event fires here. Same handler — refetch and re-render.
     const onStorage = (e: StorageEvent) => {
@@ -75,9 +103,12 @@ export default function Sidebar({ active, onSelect, isOpen, onClose }: SidebarPr
     return () => {
       cancelled = true;
       window.removeEventListener("cs-settings:saved", onSettingsSaved);
+      window.removeEventListener("cs-scrape:done", onScrapeDone);
       window.removeEventListener("storage", onStorage);
     };
   }, []);
+
+  const isSynced = !!scrapedAt;
 
   // Body scroll lock + Escape handler when mobile drawer is open
   useEffect(() => {
@@ -249,19 +280,22 @@ export default function Sidebar({ active, onSelect, isOpen, onClose }: SidebarPr
                 position: "absolute",
                 inset: 0,
                 borderRadius: "50%",
-                background: "var(--color-taupe)",
+                background: isSynced ? "var(--color-taupe)" : "var(--color-border)",
+                opacity: isSynced ? 1 : 0.7,
               }} />
-              <span style={{
-                position: "absolute",
-                inset: 0,
-                borderRadius: "50%",
-                background: "var(--color-taupe)",
-                opacity: 0.4,
-                animation: "pulse 2.4s var(--ease-in-out) infinite",
-              }} />
+              {isSynced && (
+                <span style={{
+                  position: "absolute",
+                  inset: 0,
+                  borderRadius: "50%",
+                  background: "var(--color-taupe)",
+                  opacity: 0.4,
+                  animation: "pulse 2.4s var(--ease-in-out) infinite",
+                }} />
+              )}
             </span>
             <span style={{ fontSize: "0.75rem", color: "var(--color-text-dim)", letterSpacing: "0.02em" }}>
-              Live · synced with your scrapes
+              {isSynced ? "Live · synced with your scrapes" : "Offline · not synced yet"}
             </span>
           </div>
         </div>

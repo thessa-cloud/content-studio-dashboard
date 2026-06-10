@@ -31,6 +31,15 @@ export default function ScrapeNowButton({ onComplete, mode = "all" }: ScrapeNowB
       if (!result.ok) {
         setError((result.errors ?? ["Scrape failed"]).join(", "));
       } else {
+        // Let any sibling listener (Sidebar footer pill, future widgets)
+        // know a scrape just completed, so they can refetch the latest
+        // scraped_at and flip from Offline → Live without a reload.
+        try {
+          window.dispatchEvent(new CustomEvent("cs-scrape:done"));
+        } catch {
+          // CustomEvent is supported everywhere we target; if a host env
+          // somehow rejects it, the sidebar still refreshes on next mount.
+        }
         onComplete?.();
       }
     } catch (e) {
