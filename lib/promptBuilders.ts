@@ -56,21 +56,36 @@ type StrategyRow = {
  */
 export const EMPTY_VAULT_PREFIX = "EMPTY_VAULT:";
 
+/**
+ * fetchVault — throws EMPTY_VAULT when empty. Use for prompts that strictly
+ * need scraped posts to produce anything useful (competitor patterns, hook
+ * patterns, pillar extraction, performance analysis).
+ */
 async function fetchVault(): Promise<{ posts: VaultPost[]; scraped_at: string | null }> {
-  let data: { posts: VaultPost[]; scraped_at: string | null };
-  try {
-    const r = await fetch("/api/data?tab=vault", { cache: "no-store" });
-    const j = await r.json();
-    data = j?.data ?? { posts: [], scraped_at: null };
-  } catch {
-    data = { posts: [], scraped_at: null };
-  }
+  const data = await fetchVaultSafe();
   if (!data.posts || data.posts.length === 0) {
     throw new Error(
       `${EMPTY_VAULT_PREFIX} Vault is empty. Open the Vault tab and scrape your handle first.`
     );
   }
   return data;
+}
+
+/**
+ * fetchVaultSafe — never throws. Returns an empty `{ posts: [], scraped_at: null }`
+ * when no scrape has run yet. Use for prompts that can still produce useful
+ * output without scraped data (drafting a caption from voice + trigger
+ * triplet + topic alone). Avoids the "Vault is empty" wall that blocks the
+ * customer from using Claude before they've ever scraped.
+ */
+async function fetchVaultSafe(): Promise<{ posts: VaultPost[]; scraped_at: string | null }> {
+  try {
+    const r = await fetch("/api/data?tab=vault", { cache: "no-store" });
+    const j = await r.json();
+    return j?.data ?? { posts: [], scraped_at: null };
+  } catch {
+    return { posts: [], scraped_at: null };
+  }
 }
 
 async function fetchStrategy(): Promise<StrategyRow | null> {
@@ -437,18 +452,29 @@ export async function buildDraftCaptionPrompt(
   topic = "",
   trigger?: TriggerTriplet
 ): Promise<string> {
-  const [{ posts }, strategy, perf] = await Promise.all([
-    fetchVault(),
+  // Use fetchVaultSafe so a brand-new install (no scrape yet) still gets a
+  // usable prompt instead of an EMPTY_VAULT wall. Drafts can be written from
+  // trigger triplet + voice rules + topic alone — scraped data sweetens the
+  // output (real hook winners + real performance) but is not required.
+  const [{ posts, scraped_at }, strategy, perf] = await Promise.all([
+    fetchVaultSafe(),
     fetchStrategy(),
     fetchPerformance(),
   ]);
-  const top = topSelf(posts, 15);
+  const hasScrape = posts.length > 0;
+  const top = hasScrape ? topSelf(posts, 15) : [];
+  const noticeIfEmpty = hasScrape
+    ? ""
+    : "_No scrape data yet. You're writing from voice rules + trigger context alone. Customer can scrape their handle in the Vault tab later for sharper hooks._";
   return [
     "# Draft a caption in my voice",
     BODY_DRAFT_CAPTION(topic, trigger),
+    noticeIfEmpty,
     fenceData("VOICE DATA (my rules)", strategy),
-    fenceData("HOOK DATA (my winners)", { winners: top }),
+    fenceData("HOOK DATA (my winners)", { winners: top, scraped_at }),
     fenceData("PERFORMANCE SNAPSHOT", perf),
     "Return 3 captions in Markdown.",
-  ].join("\n\n");
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
