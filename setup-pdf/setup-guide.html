@@ -523,7 +523,7 @@
       </ul>
     </li>
     <li>Click <strong>Deploy</strong>.</li>
-    <li>Wait two minutes. Vercel will show a live URL like <code>content-studio-yourname.vercel.app</code>. Click it. Your dashboard is live.</li>
+    <li>Wait two minutes. Vercel will show a live URL like <code>content-studio-yourname.vercel.app</code>. Click it. Your dashboard is live. <strong>Bookmark this URL now</strong>, you will use it in every step from here on.</li>
   </ol>
 
   <div class="btn-row">
@@ -561,9 +561,11 @@
   <ol>
     <li>Open your Supabase project (the one from Step 2).</li>
     <li>In the left sidebar, click <strong>SQL Editor</strong>.</li>
-    <li>Click <strong>+ New query</strong>.</li>
-    <li>In your GitHub fork (Step 1), open the file <code>supabase/migrations/0001_initial_schema.sql</code>. Click the <strong>Raw</strong> button, then Cmd-A and Cmd-C to copy the whole file.</li>
-    <li>Back in the Supabase SQL Editor, paste (Cmd-V) and click the green <strong>Run</strong> button.</li>
+    <li>Click <strong>+ New query</strong>. Leave this tab open.</li>
+    <li>In a new browser tab, click the <strong>Open the migration file</strong> button below. GitHub opens the SQL file in your browser.</li>
+    <li>Click the <strong>Raw</strong> button (top right of the code area). The page reloads showing only the raw SQL text on a white background.</li>
+    <li>Select all and copy: <strong>Mac</strong> Cmd-A then Cmd-C. <strong>Windows</strong> Ctrl-A then Ctrl-C.</li>
+    <li>Back in the Supabase SQL Editor tab, click in the empty query box, paste (Cmd-V on Mac, Ctrl-V on Windows), then click the green <strong>Run</strong> button.</li>
     <li>You should see "Success. No rows returned" at the bottom.</li>
     <li>Click <strong>Table Editor</strong> in the sidebar. You should now see six tables.</li>
   </ol>
@@ -599,7 +601,7 @@
 
   <h3>Before you click</h3>
   <ol>
-    <li>Open your live dashboard (the Vercel URL).</li>
+    <li>Open your live dashboard. This is the bookmark from Step 3, your URL looks like <code>content-studio-yourname.vercel.app</code>. Lost it? Go to <a href="https://vercel.com/dashboard">vercel.com/dashboard</a>, click your project, then click <strong>Visit</strong> in the top right.</li>
     <li>Click the <strong>Settings</strong> tab (bottom of the left sidebar).</li>
     <li>Set your brand name, your Instagram handle, and up to five competitor handles.</li>
     <li>Paste your Apify token (Apify → Settings → Integrations → API tokens). New to Apify? Sign up free, you get $5 in credits which is roughly three scrapes.</li>
