@@ -1,0 +1,1014 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Content Studio, Setup Guide</title>
+<style>
+  /* ─────────────────────────────────────────────────────────────
+     Print canvas. Chrome --print-to-pdf reads @page for size +
+     margins. We want a clean A4 with generous margins so headlines
+     breathe and screenshots don't crash into the edge.
+     ───────────────────────────────────────────────────────────── */
+  @page {
+    size: A4;
+    margin: 0;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #faf7f4;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    color: #4a342a;
+    -webkit-font-smoothing: antialiased;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  body { font-size: 11pt; line-height: 1.55; }
+
+  /* Each .page = one A4 sheet. page-break-after forces Chrome to
+     move on. We sized to A4 (210 x 297 mm) minus zero margin so
+     we manage the padding inside, full bleed allowed for headers. */
+  .page {
+    width: 210mm;
+    min-height: 297mm;
+    padding: 22mm 20mm 22mm 20mm;
+    box-sizing: border-box;
+    page-break-after: always;
+    background: #faf7f4;
+    position: relative;
+  }
+  .page:last-child { page-break-after: auto; }
+
+  h1, h2, h3, .serif {
+    font-family: 'Georgia', 'Times New Roman', serif;
+    color: #741616;
+    letter-spacing: -0.005em;
+  }
+  h1 { font-size: 28pt; margin: 0 0 6pt; font-weight: normal; line-height: 1.15; }
+  h2 { font-size: 18pt; margin: 24pt 0 10pt; font-weight: normal; line-height: 1.2; }
+  h3 { font-size: 13pt; margin: 16pt 0 6pt; color: #4a342a; font-weight: 600; }
+  p  { margin: 0 0 9pt; }
+  strong { color: #4a342a; }
+  a { color: #741616; text-decoration: none; }
+
+  ul, ol { margin: 0 0 10pt; padding-left: 18pt; }
+  li { margin-bottom: 4pt; }
+
+  .small  { font-size: 9pt; color: #8c7563; }
+  .label  { font-size: 8.5pt; letter-spacing: 0.18em; text-transform: uppercase; color: #8c7563; }
+  .dim    { color: #8c7563; }
+
+  /* ─────────────────────────────────────────────────────────────
+     COVER. Burgundy header band with cream REVENU logo, title
+     below. Customer's first impression sets the brand tone.
+     ───────────────────────────────────────────────────────────── */
+  .cover {
+    padding: 0;
+    background: #741616;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    color: #f2ece3;
+  }
+  .cover-band {
+    padding: 30mm 20mm 18mm;
+    display: flex;
+    align-items: center;
+    gap: 14mm;
+  }
+  .cover-logo {
+    width: 56mm;
+    height: auto;
+    display: block;
+  }
+  .cover-body {
+    padding: 0 20mm 30mm;
+    color: #f2ece3;
+  }
+  .cover-eyebrow {
+    font-size: 9pt;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: #f2ece3cc;
+    margin-bottom: 14pt;
+  }
+  .cover-title {
+    font-family: 'Georgia', 'Times New Roman', serif;
+    font-size: 44pt;
+    line-height: 1.05;
+    margin: 0 0 18pt;
+    color: #f2ece3;
+    letter-spacing: -0.01em;
+  }
+  .cover-title em {
+    font-style: italic;
+    color: #f2ece3;
+    opacity: 0.9;
+  }
+  .cover-sub {
+    font-size: 14pt;
+    line-height: 1.4;
+    color: #f2ece3cc;
+    max-width: 140mm;
+    margin: 0 0 22pt;
+  }
+  .cover-meta {
+    border-top: 1px solid #f2ece333;
+    padding-top: 14pt;
+    font-size: 9pt;
+    color: #f2ece3aa;
+    letter-spacing: 0.04em;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     BUTTONS, real <a> elements styled as pills. Chrome's print
+     engine preserves these as PDF link annotations, so a customer
+     reading on a tablet, in Preview.app, in Acrobat, in their
+     iPhone Mail preview, can tap and the right tab opens.
+     ───────────────────────────────────────────────────────────── */
+  .btn {
+    display: inline-block;
+    background: #741616;
+    color: #f2ece3 !important;
+    padding: 9pt 16pt;
+    border-radius: 8pt;
+    font-size: 10.5pt;
+    font-weight: 600;
+    text-decoration: none;
+    margin: 4pt 6pt 6pt 0;
+    border: 0;
+    letter-spacing: 0.01em;
+  }
+  .btn.ghost {
+    background: transparent;
+    color: #741616 !important;
+    border: 1px solid #741616;
+  }
+  .btn-row { margin: 8pt 0 14pt; }
+
+  /* ─────────────────────────────────────────────────────────────
+     CALLOUTS, color-coded boxes used to flag the things that
+     break setup if skipped, or the optional bits a non-tech
+     reader can ignore.
+     ───────────────────────────────────────────────────────────── */
+  .callout {
+    background: #f2ece3;
+    border-left: 3pt solid #741616;
+    padding: 10pt 14pt;
+    margin: 10pt 0 14pt;
+    border-radius: 0 6pt 6pt 0;
+    font-size: 10.5pt;
+  }
+  .callout.warn   { border-left-color: #c98a3e; background: #faf1e3; }
+  .callout.ok     { border-left-color: #4f7a4a; background: #eef3ec; }
+  .callout strong { color: #4a342a; }
+  .callout { page-break-inside: avoid; break-inside: avoid; }
+
+  /* Keep numbered + bulleted lists and tables together so list items
+     and table rows can never be orphaned across page breaks. */
+  ol, ul, table.costs { page-break-inside: avoid; break-inside: avoid; }
+  h1, h2, h3 { page-break-after: avoid; break-after: avoid; }
+
+  /* ─────────────────────────────────────────────────────────────
+     COST TABLE on "What you need" page.
+     ───────────────────────────────────────────────────────────── */
+  table.costs {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8pt 0 12pt;
+    font-size: 10.5pt;
+  }
+  table.costs th, table.costs td {
+    padding: 8pt 10pt;
+    text-align: left;
+    border-bottom: 1px solid #ebe3d6;
+  }
+  table.costs th {
+    color: #8c7563;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-size: 9pt;
+  }
+  table.costs td.cost {
+    color: #4f7a4a;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     STEP HEADERS. Two-line: small number + serif title.
+     ───────────────────────────────────────────────────────────── */
+  .step-no {
+    display: inline-block;
+    background: #741616;
+    color: #f2ece3;
+    width: 28pt;
+    height: 28pt;
+    line-height: 28pt;
+    text-align: center;
+    border-radius: 50%;
+    font-weight: 700;
+    font-size: 11pt;
+    margin-right: 10pt;
+    vertical-align: middle;
+  }
+  .step-title {
+    display: inline-block;
+    vertical-align: middle;
+  }
+  .step-title h2 {
+    margin: 0;
+    font-size: 22pt;
+  }
+  .step-title .label { display: block; margin-bottom: 2pt; }
+
+  /* Inline screenshots. cap height so the page still has room. */
+  .shot {
+    display: block;
+    width: 100%;
+    max-height: 110mm;
+    object-fit: contain;
+    border: 1px solid #ebe3d6;
+    border-radius: 6pt;
+    margin: 8pt 0 6pt;
+    box-shadow: 0 1pt 3pt rgba(74, 52, 42, 0.06);
+  }
+  .shot.small { max-height: 70mm; }
+  .shot-caption {
+    font-size: 9pt;
+    color: #8c7563;
+    margin: 0 0 14pt;
+    text-align: center;
+  }
+
+  /* Code / paths */
+  code, .mono {
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 9.5pt;
+    background: #f2ece3;
+    padding: 1pt 5pt;
+    border-radius: 3pt;
+    color: #741616;
+  }
+  pre {
+    background: #2a1f1a;
+    color: #f2ece3;
+    padding: 12pt 14pt;
+    border-radius: 6pt;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 8.5pt;
+    line-height: 1.5;
+    overflow: hidden;
+    margin: 8pt 0 12pt;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  pre.wide {
+    font-size: 7.5pt;
+    line-height: 1.3;
+  }
+
+  /* PROMPT pages, slightly different layout: prompt name as
+     section header, what-it-does block, then the prompt body
+     in a code block. */
+  .prompt-meta {
+    font-size: 10pt;
+    color: #4a342a;
+    margin: 0 0 8pt;
+  }
+  .prompt-meta .tag {
+    display: inline-block;
+    background: #f2ece3;
+    color: #741616;
+    padding: 2pt 7pt;
+    border-radius: 3pt;
+    font-weight: 600;
+    margin-right: 6pt;
+    font-size: 8.5pt;
+    letter-spacing: 0.04em;
+  }
+
+  /* Footer on every non-cover page */
+  .pagefoot {
+    position: absolute;
+    bottom: 10mm;
+    left: 20mm;
+    right: 20mm;
+    display: flex;
+    justify-content: space-between;
+    font-size: 8.5pt;
+    color: #8c7563;
+    letter-spacing: 0.06em;
+    border-top: 1px solid #ebe3d6;
+    padding-top: 4pt;
+  }
+  .pagefoot .brand { color: #741616; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════ COVER ═══════════════════════════════ -->
+<section class="page cover">
+  <div>
+    <div class="cover-band">
+      <img class="cover-logo" src="revenu-cream-transparent.png" alt="REVENU">
+    </div>
+    <div class="cover-body">
+      <div class="cover-eyebrow">Content Studio · Setup Guide</div>
+      <h1 class="cover-title">From zero to a working content brain, <em>in 30 minutes.</em></h1>
+      <p class="cover-sub">
+        This guide walks you through every click. No code knowledge required.
+        Five buttons, four free accounts, one paid Claude subscription you
+        already have. By the last page your dashboard is live and Claude is
+        reading your last 90 days of Instagram.
+      </p>
+      <div class="cover-meta">
+        <span>Version 1.1 · 2026</span>
+        <span>See it live · studio.revenu-academy.nl</span>
+      </div>
+      <div class="cover-meta" style="margin-top: 6pt;">
+        <span>Support · hello@revenu-academy.nl</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ WHAT YOU GET ═══════════════════════════ -->
+<section class="page">
+  <div class="label">Welcome</div>
+  <h1>What you are about to set up</h1>
+  <p>
+    Content Studio is your personal dashboard for everything that goes into
+    posting on Instagram with intention. Once it is live, it does four jobs
+    that used to eat your week:
+  </p>
+
+  <ol>
+    <li><strong>Scrapes your last 90 days of posts</strong> and the last 90 days of up to five competitors, on one click.</li>
+    <li><strong>Hands you five copy-paste prompts</strong> that read that data and write your content pillars, your voice rules, your top hooks, your competitor patterns, and fresh caption drafts back into the dashboard.</li>
+    <li><strong>Holds your drafts</strong> with status tags (draft, scheduled, posted), trigger words, slide counts, all in one place.</li>
+    <li><strong>Shows your performance trends</strong> so you stop guessing which hook type works.</li>
+  </ol>
+
+  <div class="callout ok">
+    <strong>You are not learning to code.</strong> Every step in this guide
+    is either a button click or a copy paste. If you can use Canva and
+    Instagram, you can finish this setup.
+  </div>
+
+  <h2>What you need before you start</h2>
+
+  <table class="costs">
+    <thead>
+      <tr><th>What</th><th>Why</th><th>Cost</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>A GitHub account</td><td>Holds your copy of the dashboard code</td><td class="cost">Free</td></tr>
+      <tr><td>A Supabase account</td><td>Stores your scraped posts + drafts</td><td class="cost">Free</td></tr>
+      <tr><td>A Vercel account</td><td>Hosts your live dashboard at a real URL</td><td class="cost">Free</td></tr>
+      <tr><td>An Apify account</td><td>Does the actual Instagram scraping</td><td class="cost">Free tier ($5/mo credit)</td></tr>
+      <tr><td>A Claude account</td><td>Runs the five prompts on your data</td><td class="cost">$20/mo (you have it)</td></tr>
+    </tbody>
+  </table>
+
+  <p class="small">Total new monthly cost if you already pay for Claude: <strong style="color:#4f7a4a">$0</strong>.</p>
+
+  <p style="margin-top: 18px; color: #4a342a;">The next pages walk you through six steps, in order. Follow them top to bottom and you will have a live dashboard at your own URL by the end.</p>
+
+  <div class="pagefoot"><span class="brand">REVENU Content Studio</span><span>Setup Guide, p. 1</span></div>
+</section>
+
+<!-- ═══════════════════════════ STEP 1: GITHUB ═══════════════════════════ -->
+<section class="page">
+  <div class="step-title">
+    <span class="step-no">1</span>
+    <div class="step-title">
+      <span class="label">Step 1 · 3 minutes</span>
+      <h2>Get your own copy of the code</h2>
+    </div>
+  </div>
+
+  <p>
+    The dashboard lives in a public GitHub repository. You are going to make
+    a personal copy (called a "fork") so the version you deploy is yours,
+    on your account, under your control.
+  </p>
+
+  <h3>What to do</h3>
+  <ol>
+    <li>Click the button below. It opens the dashboard repository on GitHub.</li>
+    <li>If you do not have a GitHub account yet, click <strong>Sign up</strong> in the top right. Use your work email. Free.</li>
+    <li>Back on the repository page, click the <strong>Fork</strong> button (top right of the page, next to "Star").</li>
+    <li>On the next screen, leave everything as default and click <strong>Create fork</strong>.</li>
+  </ol>
+
+  <div class="btn-row">
+    <a class="btn" href="https://github.com/thessa-cloud/content-studio-dashboard">Open the dashboard on GitHub →</a>
+    <a class="btn ghost" href="https://github.com/signup">I need a GitHub account first</a>
+  </div>
+
+  <div class="callout">
+    <strong>What just happened?</strong> You now have your own copy of the
+    dashboard code at <code>github.com/YOUR-USERNAME/content-studio-dashboard</code>.
+    Nothing is online yet. We will connect this to a host in Step 3.
+  </div>
+
+  <h3>Common slip</h3>
+  <p>
+    If the Fork button takes you to a "Choose owner" page with one option,
+    that one option <em>is</em> your account. Just click it and continue.
+    GitHub asks because some people belong to multiple organizations.
+  </p>
+
+  <div class="pagefoot"><span class="brand">REVENU Content Studio</span><span>Setup Guide, p. 2</span></div>
+</section>
+
+<!-- ═══════════════════════════ STEP 2: SUPABASE ═══════════════════════════ -->
+<section class="page">
+  <div class="step-title">
+    <span class="step-no">2</span>
+    <div class="step-title">
+      <span class="label">Step 2 · 6 minutes</span>
+      <h2>Set up your database</h2>
+    </div>
+  </div>
+
+  <p>
+    Supabase is where your scraped posts, drafts, pillars and voice rules
+    live. The free tier covers everything you will ever need for one
+    Instagram brand.
+  </p>
+
+  <h3>What to do</h3>
+  <ol>
+    <li>Click <strong>Open Supabase</strong> below. Sign up with your GitHub account, that is the fastest path.</li>
+    <li>Once you are in, click <strong>New project</strong> (green button, top right).</li>
+    <li>Project name: <code>content-studio</code>. Choose any region close to you. Choose a strong database password (write it down somewhere safe). Click <strong>Create new project</strong>.</li>
+    <li>Wait about a minute for the project to spin up.</li>
+    <li>Once it is ready, go to <strong>Project Settings → API</strong> in the left sidebar.</li>
+    <li>Copy two values into a notepad. You will paste them into Vercel in Step 3.
+      <ul>
+        <li><code>Project URL</code> (looks like <code>https://abcd1234.supabase.co</code>)</li>
+        <li><code>service_role</code> key (under "Project API keys", click "Reveal" first)</li>
+      </ul>
+    </li>
+  </ol>
+
+  <div class="btn-row">
+    <a class="btn" href="https://supabase.com/dashboard">Open Supabase →</a>
+    <a class="btn ghost" href="https://supabase.com">I need a Supabase account</a>
+  </div>
+
+  <div class="callout warn">
+    <strong>Important.</strong> The <code>service_role</code> key gives full
+    access to your database. Treat it like a password. Never share it, never
+    paste it into a public chat. We will store it only in Vercel where it
+    stays private to your project.
+  </div>
+
+  <h3>Common slip</h3>
+  <p>
+    If you see <code>anon</code> and <code>service_role</code> in the API
+    panel, copy the <strong>service_role</strong> one. The anon key is
+    public-safe but the dashboard needs server-side access to write back
+    your data.
+  </p>
+
+  <div class="pagefoot"><span class="brand">REVENU Content Studio</span><span>Setup Guide, p. 3</span></div>
+</section>
+
+<!-- ═══════════════════════════ STEP 3: VERCEL ═══════════════════════════ -->
+<section class="page">
+  <div class="step-title">
+    <span class="step-no">3</span>
+    <div class="step-title">
+      <span class="label">Step 3 · 5 minutes</span>
+      <h2>Put your dashboard online</h2>
+    </div>
+  </div>
+
+  <p>
+    Vercel hosts the dashboard at a real URL. Free hobby plan covers it.
+    The one-click button below clones your fork from Step 1 and walks you
+    through the env vars.
+  </p>
+
+  <h3>What to do</h3>
+  <ol>
+    <li>Click <strong>Deploy on Vercel</strong> below.</li>
+    <li>Sign in with GitHub.</li>
+    <li>Vercel asks where to clone the repo, leave defaults, click <strong>Continue</strong>.</li>
+    <li>Vercel asks for environment variables. Paste from your Supabase notes:
+      <ul>
+        <li><code>NEXT_PUBLIC_SUPABASE_URL</code> = your Supabase project URL</li>
+        <li><code>SUPABASE_SERVICE_ROLE_KEY</code> = your service_role key</li>
+        <li><code>FUNCTION_SECRET</code> = any long random string (open <a href="https://1password.com/password-generator/">1Password password generator</a>, set length 32, copy the result, paste here)</li>
+      </ul>
+    </li>
+    <li>Click <strong>Deploy</strong>.</li>
+    <li>Wait two minutes. Vercel will show a live URL like <code>content-studio-yourname.vercel.app</code>. Click it. Your dashboard is live.</li>
+  </ol>
+
+  <div class="btn-row">
+    <a class="btn" href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fthessa-cloud%2Fcontent-studio-dashboard&env=NEXT_PUBLIC_SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,FUNCTION_SECRET&envDescription=Supabase%20project%20URL,%20service%20role%20key,%20and%20a%20random%20string%20for%20the%20scraper%20function.&project-name=content-studio&repository-name=content-studio">Deploy on Vercel →</a>
+  </div>
+
+  <div class="callout ok">
+    <strong>What you should see.</strong> A working dashboard with six tabs:
+    Drafts, Strategy, Performance, Competitor Intel, Vault, Settings. The
+    tabs will all be in their empty state, that is normal, we fix that in
+    Step 5.
+  </div>
+
+  <img class="shot" src="screenshots/05-vault.png" alt="The Vault tab on first load, showing the empty state">
+  <p class="shot-caption">Vault tab on first load. This is what a fresh dashboard looks like.</p>
+
+  <div class="pagefoot"><span class="brand">REVENU Content Studio</span><span>Setup Guide, p. 4</span></div>
+</section>
+
+<!-- ═══════════════════════════ STEP 4: MIGRATION ═══════════════════════════ -->
+<section class="page">
+  <div class="step-title">
+    <span class="step-no">4</span>
+    <div class="step-title">
+      <span class="label">Step 4 · 2 minutes</span>
+      <h2>Create the database tables</h2>
+    </div>
+  </div>
+
+  <p>
+    Your Supabase project is empty right now. The dashboard needs six
+    tables (posts, drafts, strategy, intel, settings, scrape_log). One
+    SQL paste creates all of them.
+  </p>
+
+  <h3>What to do</h3>
+  <ol>
+    <li>Open your Supabase project (the one from Step 2).</li>
+    <li>In the left sidebar, click <strong>SQL Editor</strong>.</li>
+    <li>Click <strong>+ New query</strong>.</li>
+    <li>In your GitHub fork (Step 1), open the file <code>supabase/migrations/0001_initial_schema.sql</code>. Click the <strong>Raw</strong> button, then Cmd-A and Cmd-C to copy the whole file.</li>
+    <li>Back in the Supabase SQL Editor, paste (Cmd-V) and click the green <strong>Run</strong> button.</li>
+    <li>You should see "Success. No rows returned" at the bottom.</li>
+    <li>Click <strong>Table Editor</strong> in the sidebar. You should now see six tables.</li>
+  </ol>
+
+  <div class="btn-row">
+    <a class="btn" href="https://github.com/thessa-cloud/content-studio-dashboard/blob/main/supabase/migrations/0001_initial_schema.sql">Open the migration file →</a>
+  </div>
+
+  <div class="callout warn">
+    <strong>If you see an error</strong> like "relation already exists",
+    you ran the migration twice. That is fine, the tables already exist
+    and the dashboard will work. Move on.
+  </div>
+
+  <div class="pagefoot"><span class="brand">REVENU Content Studio</span><span>Setup Guide, p. 5</span></div>
+</section>
+
+<!-- ═══════════════════════════ STEP 5: FIRST SCRAPE ═══════════════════════════ -->
+<section class="page">
+  <div class="step-title">
+    <span class="step-no">5</span>
+    <div class="step-title">
+      <span class="label">Step 5 · 5 minutes</span>
+      <h2>Your first scrape</h2>
+    </div>
+  </div>
+
+  <p>
+    The [Scrape now] button on every tab pulls your last 90 days of
+    Instagram posts, plus the last 90 days of up to five competitors,
+    into the Vault. The first scrape takes about 90 seconds.
+  </p>
+
+  <h3>Before you click</h3>
+  <ol>
+    <li>Open your live dashboard (the Vercel URL).</li>
+    <li>Click the <strong>Settings</strong> tab (bottom of the left sidebar).</li>
+    <li>Set your brand name, your Instagram handle, and up to five competitor handles.</li>
+    <li>Paste your Apify token (Apify → Settings → Integrations → API tokens). New to Apify? Sign up free, you get $5 in credits which is roughly three scrapes.</li>
+    <li>Click <strong>Save</strong>.</li>
+  </ol>
+
+  <div class="btn-row">
+    <a class="btn" href="https://console.apify.com/sign-up">Sign up for Apify →</a>
+    <a class="btn ghost" href="https://console.apify.com/settings/integrations">Find my Apify token</a>
+  </div>
+
+  <img class="shot small" src="screenshots/06-settings.png" alt="The Settings tab">
+  <p class="shot-caption">Settings tab. Brand name, handle, competitors, Apify token, trigger words.</p>
+
+  <h3>Run the scrape</h3>
+  <ol>
+    <li>Click the <strong>Vault</strong> tab.</li>
+    <li>Click the burgundy <strong>[Scrape now]</strong> button (top right of every page).</li>
+    <li>Wait. You will see a spinner and "Scraping…" for about 90 seconds.</li>
+    <li>When it finishes, the empty-state card disappears and you see your posts.</li>
+  </ol>
+
+  <div class="pagefoot"><span class="brand">REVENU Content Studio</span><span>Setup Guide, p. 6</span></div>
+</section>
+
+<!-- ═══════════════════════════ STEP 6: CLAUDE BRIDGE ═══════════════════════════ -->
+<section class="page">
+  <div class="step-title">
+    <span class="step-no">6</span>
+    <div class="step-title">
+      <span class="label">Step 6 · 10 minutes</span>
+      <h2>Run the five prompts in Claude</h2>
+    </div>
+  </div>
+
+  <p>
+    The dashboard has a button on every tab labeled "Copy prompt with my
+    data". One click does three things at once:
+  </p>
+
+  <ol>
+    <li>Loads the prompt template (one of the five you see at the back of this guide).</li>
+    <li>Splices in your freshest scraped data from the Vault.</li>
+    <li>Copies the whole thing to your clipboard <em>and</em> pops open a fresh Claude tab for you.</li>
+  </ol>
+
+  <p>You paste into Claude, wait for the answer, copy Claude's reply, paste back into the editor on the tab you came from. Done.</p>
+
+  <div class="btn-row">
+    <a class="btn" href="https://claude.ai/new">Open Claude →</a>
+  </div>
+
+  <h3>Order to run them in</h3>
+  <ol>
+    <li><strong>Strategy → Pillars</strong>. Tells you what you actually post about.</li>
+    <li><strong>Strategy → Voice</strong>. Extracts your rules of writing.</li>
+    <li><strong>Performance → Hooks</strong>. Surfaces your top 10 scroll-stoppers.</li>
+    <li><strong>Competitor Intel → Patterns</strong>. What your top 5 are winning with.</li>
+    <li><strong>Drafts → New caption</strong>. Drafts in your voice on any topic.</li>
+  </ol>
+
+  <img class="shot small" src="screenshots/02-strategy.png" alt="The Strategy tab">
+  <p class="shot-caption">Strategy tab. The [Copy prompt with my data] button lives at the top.</p>
+
+  <div class="callout ok">
+    <strong>You are done.</strong> Your dashboard reads your data, Claude
+    reads your data, you have a working content brain. From here, just run
+    a fresh scrape weekly and re-run the prompts you care about.
+  </div>
+
+  <div class="pagefoot"><span class="brand">REVENU Content Studio</span><span>Setup Guide, p. 7</span></div>
+</section>
+
+<!-- ═══════════════════════════ THE 5 PROMPTS ═══════════════════════════ -->
+<section class="page">
+  <h1>The five prompts</h1>
+  <p>
+    For reference. You never have to type these out, the dashboard buttons
+    do the copying for you. They are reproduced here so you can read what
+    each prompt asks Claude to do, and tweak them in your own copy of the
+    code if you want to.
+  </p>
+
+  <p class="small">
+    All five prompts live in <code>lib/promptBuilders.ts</code> in your
+    GitHub fork. Each one is the "fat" version, framework baked in,
+    schema-strict so the answer pastes cleanly back into the dashboard.
+  </p>
+
+  <h2>Prompt 1 · Extract content pillars</h2>
+  <div class="prompt-meta">
+    <span class="tag">Strategy tab</span>
+    <span class="tag">Returns JSON</span>
+    <span>Reads your top 30 posts by engagement, extracts 3-5 content pillars you actually own.</span>
+  </div>
+
+<pre class="wide">You are a senior content strategist. From the DATA below (a creator's recent Instagram posts), extract 3 to 5 content pillars that genuinely describe what they post about.
+
+## What a pillar is
+
+A pillar is a recurring topic territory the creator visibly owns. Not a category, not a "vibe", a specific subject they keep returning to with their own angle.
+
+Test for a real pillar:
+1. Can you point to 4+ posts that clearly belong to it?
+2. Could a stranger guess what kind of post comes next?
+3. Does the name sound like something the creator would actually say (not a brand-deck buzzword)?
+
+## How to find them
+
+- Read every caption end-to-end. Note the actual subject, not just the hook.
+- Group by subject, not by format. A reel and a carousel about the same thing belong together.
+- Merge any two groups that overlap by more than ~60%.
+- If you end up with 6+ pillars, you over-split. Collapse the weakest into the others.
+- If you end up with 1-2, you under-grouped. Look harder for distinct angles.
+
+## Output rules
+
+- name: 1 to 3 words. Plain English. The creator's own framing if you can spot it.
+- description: ONE sentence. Specific. What this pillar covers + what makes the creator's take on it different.
+- color: hex. Pick warm, readable tones. Use distinct hues across pillars.
+- share: 0..1, sums to roughly 1.0 across all pillars.
+
+## Forbidden
+
+- Generic marketing words: "lifestyle content", "value-driven posts", "educational content", "inspirational posts", "empowerment", "authentic", "raw".
+- Buzzword pillars that fit any creator: "Mindset", "Motivation", "Tips", only allowed if the description proves the creator's specific spin.
+- Em dashes. Use commas.
+
+## Output
+
+Return JSON only. No prose before or after. Match this schema exactly:
+
+[
+  { "name": "Passive income", "description": "...", "color": "#741616", "share": 0.32 }
+]</pre>
+
+  <div class="pagefoot"><span class="brand">REVENU Content Studio</span><span>Setup Guide, p. 8</span></div>
+</section>
+
+<!-- ═══════════════════════════ PROMPT 2 ═══════════════════════════ -->
+<section class="page">
+  <h2>Prompt 2 · Extract voice rules</h2>
+  <div class="prompt-meta">
+    <span class="tag">Strategy tab</span>
+    <span class="tag">Returns JSON</span>
+    <span>Reads your top 20 captions by engagement. Returns tone, do/don't rules, signature phrases, forbidden patterns.</span>
+  </div>
+
+<pre class="wide">You are a senior voice coach. From the DATA below (the creator's top-performing captions by engagement), extract the rules of their voice so any caption written using these rules sounds like them.
+
+## What you are looking for
+
+Voice = the patterns a reader would recognize as "this person" even with the handle removed. It shows up in:
+
+- Sentence shape (long flowing vs short staccato; statements vs questions)
+- Word choices they keep reusing (signature words, signature openers, signature closers)
+- What they NEVER say (forbidden words, patterns, tones)
+- The emotional register (warm vs cool, claiming vs hedging, certain vs exploratory)
+- How they open (do they hook with a claim, a question, a confession, a callout?)
+- How they close (CTA shape, sign-off, last line punch)
+
+## Method
+
+1. Read all captions. Underline every repeated pattern.
+2. Distill to: 1 short tone phrase + 4 to 8 do/don't rules + signature phrases (3 to 8) + forbidden patterns (3 to 8).
+3. Each rule must be CHECKABLE, "Opens with a claim, never a question" is good; "Authentic" is not.
+4. Signature phrases must be VERBATIM things the creator actually wrote. Quote them.
+5. Forbidden patterns are things you see them consistently avoid (em dashes, hedging language, hustle-bro talk, therapy speak, false suspense like "but here's the thing", etc.).
+
+## Output rules
+
+- tone: 3 to 6 adjectives separated by commas. Concrete. ("warm, declarative, direct", not "engaging, valuable, authentic").
+- rules: prescriptive imperatives. Each one should be usable as a writing rule by another writer.
+- signature_phrases: verbatim quotes (or near-verbatim openers/closers they reuse).
+- forbidden: patterns they avoid. Be specific about WHY a writer would feel tempted to break it.
+
+## Forbidden
+
+- Vague rules ("Be authentic", "Be valuable", "Connect with audience").
+- Em dashes anywhere in the output.
+- Calling their voice "engaging" or "authentic". Show, do not label.
+
+## Output
+
+Return JSON only. No prose before or after.
+
+{
+  "tone": "warm, declarative, direct",
+  "rules": ["Opens with a claim, never a question", "..."],
+  "signature_phrases": ["..."],
+  "forbidden": ["em dash", "..."]
+}</pre>
+
+  <div class="pagefoot"><span class="brand">REVENU Content Studio</span><span>Setup Guide, p. 9</span></div>
+</section>
+
+<!-- ═══════════════════════════ PROMPT 3 ═══════════════════════════ -->
+<section class="page">
+  <h2>Prompt 3 · Extract hook library</h2>
+  <div class="prompt-meta">
+    <span class="tag">Performance tab</span>
+    <span class="tag">Returns JSON</span>
+    <span>Top 10 highest-engagement hooks across you + your competitors, classified by type with a one-sentence "why it works".</span>
+  </div>
+
+<pre class="wide">You are a viral-hook analyst. From the DATA below (top posts of the creator + their competitors), pull the 10 highest-performing hooks and explain WHY each one works.
+
+A hook = the first line of the caption OR the first 2 seconds of the reel, the thing that stops the scroll.
+
+## Hook type taxonomy
+
+Classify each hook as ONE of these types. Use these exact strings:
+
+- "contrarian": challenges a widely-held belief ("Stop posting every day.")
+- "callout": names the reader by situation ("If you sell digital products and you're not posting on Sunday, read this.")
+- "promise": specific outcome named upfront ("Here is exactly how I sold out my offer in 4 days.")
+- "curiosity-gap": withholds the key info, forces a read ("I changed one thing about my hook and my reach 3x'd.")
+- "numbered-list": "5 things...", "3 hooks..."
+- "story-open": "I was sitting at my desk at 11pm when..."
+- "confession": admits something uncomfortable ("I almost gave up on this offer in May.")
+- "stat-shock": opens with a number that disrupts ("$0 to $47k in 8 weeks. Here is how.")
+- "question": opens with a real question, not a fake one ("What if your low engagement is actually a signal you are about to break through?")
+
+If a hook genuinely uses 2 patterns, pick the dominant one.
+
+## Selection rules
+
+- Rank by engagement (likes + 4*comments + 0.05*views if available).
+- Across the top 10, MIX sources: at least 4 from the creator, at least 3 from competitors.
+- Skip any duplicate idea, if two hooks say the same thing differently, keep the better one.
+
+## Output rules
+
+- text: verbatim hook line. Do not paraphrase.
+- type: one of the strings above.
+- source: "mine" (the creator's own) or the competitor's handle (e.g. "@themeaganhall").
+- note: ONE sentence explaining the mechanism. WHY does it stop the scroll for this audience?
+
+## Forbidden
+
+- Made-up hooks. Only what is in the DATA.
+- Em dashes.
+- Generic notes ("This is engaging because it draws the reader in"). Be specific about the lever pulled.
+
+## Output
+
+Return JSON only. No prose before or after.
+
+[
+  { "text": "Stop posting every day.", "type": "contrarian", "source": "mine", "note": "Inverts the universal 'post daily' rule, which forces the audience that bought into that rule to read the next line." }
+]</pre>
+
+  <div class="pagefoot"><span class="brand">REVENU Content Studio</span><span>Setup Guide, p. 10</span></div>
+</section>
+
+<!-- ═══════════════════════════ PROMPT 4 ═══════════════════════════ -->
+<section class="page">
+  <h2>Prompt 4 · Competitor patterns</h2>
+  <div class="prompt-meta">
+    <span class="tag">Competitor Intel tab</span>
+    <span class="tag">Returns Markdown</span>
+    <span>For each competitor: best hook types, best formats, recurring topics, verbatim trending hooks, what is ethically replicable.</span>
+  </div>
+
+<pre class="wide">You are a senior competitive analyst. From the DATA below (recent posts of the creator's competitors), surface the patterns each competitor actually wins with.
+
+You are looking for what THIS creator can ethically learn from, not a copy/paste playbook.
+
+## What to extract per handle
+
+For each competitor handle, surface:
+
+1. Best hook types, which of these get them outsized engagement? (Use the hook taxonomy: contrarian / callout / promise / curiosity-gap / numbered-list / story-open / confession / stat-shock / question.) Rank top 2 or 3.
+2. Best formats, reel vs carousel vs image. Which format produces their top-decile posts? Note any specific format twist (e.g. "5-slide carousels with text-only slides on cream").
+3. Recurring topics, the 3 to 5 subjects they keep returning to. Be specific. "Mindset" is not a topic; "the moment you stop pricing for your nervous system" is.
+4. Trending hooks (verbatim), list 3 to 5 of their highest-engagement opening lines, copied exactly.
+5. What is replicable, ONE sentence: what could a different creator borrow without becoming a copycat?
+
+## Method
+
+- Sort each handle's posts by engagement (likes + 4*comments + 0.05*views if views exist).
+- Look at the top 30% of each handle's set.
+- Identify what they share. A handle's "best" is whatever they do that consistently outperforms their own average, NOT the absolute biggest post.
+- If a handle has fewer than 10 posts in the data, say "insufficient data" and move on.
+
+## Output
+
+Return one block per handle, separated by blank lines. Match this format exactly:
+
+@handle
+  best hook types: contrarian, callout
+  best formats: 5-slide carousel, talking-head reel
+  recurring topics: pricing nervous system, sold-out launches, post-baby business identity
+  trending hooks (verbatim):
+    - "If your offer is not selling, your hook is lying about it."
+    - "Stop pricing for your nervous system."
+    - "..."
+  replicable: opening with a contrarian claim against the creator's own past beliefs.
+
+## Forbidden
+
+- Em dashes.
+- Made-up data. If you cannot tell from the DATA, say so.
+- Generic recommendations ("post more"). Every line must be specific to this handle.
+- Encouraging direct copying. Always frame as "what is the underlying pattern".</pre>
+
+  <div class="pagefoot"><span class="brand">REVENU Content Studio</span><span>Setup Guide, p. 11</span></div>
+</section>
+
+<!-- ═══════════════════════════ PROMPT 5 ═══════════════════════════ -->
+<section class="page">
+  <h2>Prompt 5 · Draft a caption in your voice</h2>
+  <div class="prompt-meta">
+    <span class="tag">Drafts tab</span>
+    <span class="tag">Returns Markdown</span>
+    <span>3 distinct caption options on a topic you give it, using your voice rules + your top hook patterns + your latest performance data.</span>
+  </div>
+
+<pre class="wide">You are a caption writer trained on the creator's voice (see VOICE DATA below) and their winning hook patterns (see HOOK DATA below). You also have a snapshot of what is currently working for them (see PERFORMANCE SNAPSHOT).
+
+## Topic
+
+(provided by the dashboard from the Drafts editor)
+
+## What you are writing
+
+3 distinct caption options for ONE Instagram post on this topic. Each option is a complete caption + a format suggestion. The creator picks one, edits lightly, posts.
+
+## Structure per option
+
+For each of the 3 options, write:
+
+- Hook, the first line. Scroll-stopper. In their voice. Uses one of THEIR winning hook patterns from HOOK DATA. Each option uses a DIFFERENT hook pattern (so the 3 options feel genuinely different).
+- Body, 3 to 6 short paragraphs. Reads at a 7th-grade level. Uses their signature openers/closers. Avoids every pattern in their VOICE DATA's "forbidden" list.
+- CTA, one specific action. Names what to do AND what the reader gets in return ("Comment WORD and I'll send you X"). Never "link in bio". Never "DM me" without a specific keyword.
+- Format, carousel (with slide count + slide-by-slide TITLE + 1-line BODY each), or reel (with 4 to 6 beats), or single image (with a one-line visual brief).
+
+## Hard rules
+
+- NO em dashes anywhere. Use commas.
+- NO label words ("overwhelmed", "burnout", "spiraling", "anxious", "stuck"). Write the physical scene instead ("you keep checking your phone every 3 minutes while pretending to read").
+- NO staccato chains (3+ short sentences in a row). Use commas to make sentences flow.
+- NO therapy-speak, no false suspense ("but here's the thing"), no hustle-bro talk, no raise-your-prices messaging unless the creator's voice explicitly uses it.
+- NO generic marketing closers ("hope this helps!", "thoughts?").
+
+## Quality bar
+
+Each caption must pass these tests:
+1. The first line could be lifted out and posted as a standalone hook, would it stop you?
+2. Could a stranger reading 3 captions back to back identify it as the same person?
+3. Is there ONE specific takeaway, or a vague gesture at three things?
+4. Does the CTA name an action the reader can do in 5 seconds?
+
+If any test fails, rewrite that option before returning.
+
+## Output
+
+Return Markdown with three numbered options. No preface, no apology, no "here are your captions", just the three options.</pre>
+
+  <div class="pagefoot"><span class="brand">REVENU Content Studio</span><span>Setup Guide, p. 12</span></div>
+</section>
+
+<!-- ═══════════════════════════ TROUBLESHOOTING ═══════════════════════════ -->
+<section class="page">
+  <h1>If something goes wrong</h1>
+
+  <h3>The Vercel deploy fails with "missing env var"</h3>
+  <p>
+    Open your Vercel project → Settings → Environment Variables. Confirm
+    all three are set: <code>NEXT_PUBLIC_SUPABASE_URL</code>,
+    <code>SUPABASE_SERVICE_ROLE_KEY</code>, <code>FUNCTION_SECRET</code>.
+    Each must have a value, no spaces, no quotes. Then go to Deployments
+    and click "Redeploy" on the most recent one.
+  </p>
+
+  <h3>The Vault is empty after I clicked [Scrape now]</h3>
+  <p>
+    Open the browser dev tools (right-click → Inspect → Console). If you
+    see a 401 error, your Apify token is wrong or expired, replace it in
+    Settings. If you see a 500 error, you missed the migration in Step 4,
+    go back and run the SQL.
+  </p>
+
+  <h3>The [Copy prompt with my data] button does nothing</h3>
+  <p>
+    The button has to open Claude in a new tab. Some browsers block popups
+    by default. Look for a small "popup blocked" icon in your address bar
+    and allow popups for your dashboard URL.
+  </p>
+
+  <h3>Claude returns a result but the editor will not accept it</h3>
+  <p>
+    Make sure you copied <strong>only</strong> the JSON block (everything
+    between <code>{</code> and the matching <code>}</code>, or the
+    <code>[</code> and the matching <code>]</code>). The editor expects
+    pure JSON, not the markdown wrapper Claude sometimes adds.
+  </p>
+
+  <h2>Support</h2>
+  <p>
+    Stuck on a step? Email us a screenshot of the screen you are on, plus
+    a one-line description of what you tried. We answer within one
+    business day.
+  </p>
+
+  <div class="btn-row">
+    <a class="btn" href="mailto:hello@revenu-academy.nl?subject=Content%20Studio%20setup">Email support →</a>
+    <a class="btn ghost" href="https://studio.revenu-academy.nl">See the live demo →</a>
+    <a class="btn ghost" href="https://revenu-academy.nl">REVENU homepage</a>
+  </div>
+
+  <div class="callout">
+    <strong>One more thing.</strong> Your dashboard is yours. Your code is
+    in your GitHub. Your data is in your Supabase. Your captions live in
+    your database. We never touch your scraped posts, your drafts, or
+    your prompts. The whole point of Content Studio is that you own the
+    intelligence you build.
+  </div>
+
+  <div class="pagefoot"><span class="brand">REVENU Content Studio</span><span>Setup Guide, p. 13</span></div>
+</section>
+
+</body>
+</html>

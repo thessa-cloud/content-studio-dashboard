@@ -5,7 +5,7 @@ import TabContainer from "../shared/TabContainer";
 import TabHeader from "../shared/TabHeader";
 import EmptyState from "../shared/EmptyState";
 import PasteFromClaude, { stripCodeFences } from "../shared/PasteFromClaude";
-import CopyPromptButton from "../shared/CopyPromptButton";
+import CopyPromptButton, { FatPromptPreview } from "../shared/CopyPromptButton";
 import { buildDraftCaptionPrompt } from "../../../lib/promptBuilders";
 import { fetchEffectiveSettings, type TriggerTriplet } from "../../../lib/settings";
 
@@ -26,7 +26,7 @@ type Draft = {
   updated_at: string;
 };
 
-type NewDraft = Omit<Draft, "id" | "created_at" | "updated_at" | "posted_at" | "scheduled_for">;
+type NewDraft = Omit<Draft, "id" | "created_at" | "updated_at" | "posted_at">;
 
 type ViewMode = "list" | "calendar";
 
@@ -44,6 +44,7 @@ const emptyDraft = (): NewDraft => ({
   slide_count: 1,
   type: "carousel",
   status: "draft",
+  scheduled_for: null,
 });
 
 /**
@@ -322,7 +323,7 @@ export default function Drafts() {
               accepts the reply. Generating a prompt without first picking a
               trigger is fine — the prompt just won't have the trigger
               context block. */}
-          <div style={{ marginBottom: "0.85rem", display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
+          <div style={{ marginBottom: "0.6rem", display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
             <CopyPromptButton
               label={
                 selectedTrigger
@@ -337,6 +338,16 @@ export default function Drafts() {
                 ? "Claude will write 3 captions on the linked topic, with the CTA grounded in the linked promise."
                 : "Pick a trigger word above to ground the CTA in your linked offer/promise."}
             </span>
+          </div>
+
+          {/* Visible fat prompt — the writer SEES the exact prompt the button
+              above sends, can read it, copy it manually, or edit it before
+              pasting into claude.ai. No more invisible clipboard magic. */}
+          <div style={{ marginBottom: "0.85rem" }}>
+            <FatPromptPreview
+              buildPrompt={() => buildDraftCaptionPrompt("", selectedTrigger ?? undefined)}
+              label="Show the full Claude prompt (read + copy)"
+            />
           </div>
 
           <PasteFromClaude<ParsedDraftOption[]>
@@ -441,6 +452,67 @@ export default function Drafts() {
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Scheduled date+time. Optional on draft creation — if filled in,
+              the draft saves with scheduled_for already populated so the
+              writer can move straight from "write" to "scheduled" without a
+              second click. The input value is the local datetime; we
+              round-trip through a Date to get an ISO string for the API. */}
+          <div
+            style={{
+              display: "flex",
+              gap: "0.5rem",
+              marginTop: "0.75rem",
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
+            <label
+              htmlFor="new-draft-schedule"
+              style={{
+                fontSize: "0.72rem",
+                color: "var(--color-text-dim)",
+                fontWeight: 600,
+                letterSpacing: "0.04em",
+              }}
+            >
+              Schedule for
+            </label>
+            <input
+              id="new-draft-schedule"
+              type="datetime-local"
+              aria-label="Schedule new draft for date and time"
+              value={draft.scheduled_for ? toLocalInput(draft.scheduled_for) : ""}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  scheduled_for: e.target.value ? new Date(e.target.value).toISOString() : null,
+                  // If we just set a date, flip status to scheduled so the calendar
+                  // picks it up immediately on save. If we cleared it, drop back to draft.
+                  status: e.target.value ? "scheduled" : "draft",
+                })
+              }
+              style={selectStyle}
+            />
+            {draft.scheduled_for && (
+              <button
+                type="button"
+                onClick={() =>
+                  setDraft({ ...draft, scheduled_for: null, status: "draft" })
+                }
+                style={{
+                  ...ghostBtn,
+                  padding: "0.35rem 0.75rem",
+                  fontSize: "0.72rem",
+                }}
+              >
+                Clear date
+              </button>
+            )}
+            <span style={{ fontSize: "0.7rem", color: "var(--color-text-dim)" }}>
+              Optional — fill in to save straight to the calendar.
+            </span>
           </div>
 
           {/* Trigger context block — surfaces the offer/topic/promise tied to
@@ -612,9 +684,20 @@ export default function Drafts() {
 
             <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
               {d.status === "draft" && (
-                <button onClick={() => patchDraft(d.id, { status: "scheduled" })} style={primaryBtn} disabled={saving}>
-                  Schedule
-                </button>
+                <ScheduleControl
+                  draft={d}
+                  saving={saving}
+                  onSchedule={(iso) =>
+                    patchDraft(d.id, { status: "scheduled", scheduled_for: iso })
+                  }
+                />
+              )}
+              {d.status === "scheduled" && (
+                <RescheduleControl
+                  draft={d}
+                  saving={saving}
+                  onReschedule={(iso) => patchDraft(d.id, { scheduled_for: iso })}
+                />
               )}
               {d.status === "scheduled" && (
                 <>
@@ -1222,4 +1305,124 @@ function cleanLine(s: string): string {
     .replace(/^\*\*|\*\*$/g, "")
     .replace(/^["'`]|["'`]$/g, "")
     .trim();
+}
+
+/**
+ * Convert an ISO timestamp to the `YYYY-MM-DDTHH:MM` local-time string that
+ * <input type="datetime-local"> expects. Browsers refuse anything else, and
+ * passing an ISO directly leaves the input empty without explanation.
+ */
+function toLocalInput(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/**
+ * ScheduleControl — sits on a card whose status is "draft". Customer picks
+ * a date+time, then hits Schedule, and the draft moves to status=scheduled
+ * with scheduled_for filled in (one PATCH, no second click). Before this
+ * existed, the Schedule button just flipped status with no date — drafts
+ * went to "scheduled" but never showed up on the calendar.
+ */
+function ScheduleControl({
+  draft,
+  saving,
+  onSchedule,
+}: {
+  draft: Draft;
+  saving: boolean;
+  onSchedule: (iso: string) => void;
+}) {
+  const [when, setWhen] = useState<string>(() =>
+    draft.scheduled_for ? toLocalInput(draft.scheduled_for) : ""
+  );
+  // Re-sync local input value if the parent's scheduled_for changes underneath
+  // (e.g. external patch arrived while the component instance was reused).
+  // Without this, useState's initializer only runs once per mount, so the
+  // displayed date could go stale.
+  useEffect(() => {
+    setWhen(draft.scheduled_for ? toLocalInput(draft.scheduled_for) : "");
+  }, [draft.scheduled_for]);
+  return (
+    <div style={{ display: "inline-flex", gap: "0.4rem", alignItems: "center", flexWrap: "wrap" }}>
+      <input
+        type="datetime-local"
+        value={when}
+        onChange={(e) => setWhen(e.target.value)}
+        aria-label="Schedule date and time"
+        style={{
+          ...selectStyle,
+          padding: "0.4rem 0.7rem",
+          fontSize: "0.78rem",
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => {
+          if (!when) return;
+          onSchedule(new Date(when).toISOString());
+        }}
+        style={primaryBtn}
+        disabled={saving || !when}
+      >
+        Schedule
+      </button>
+    </div>
+  );
+}
+
+/**
+ * RescheduleControl — same shape, but for drafts already in "scheduled"
+ * status. Lets the customer move a scheduled draft to a new date without
+ * having to send it back to "draft" first.
+ */
+function RescheduleControl({
+  draft,
+  saving,
+  onReschedule,
+}: {
+  draft: Draft;
+  saving: boolean;
+  onReschedule: (iso: string) => void;
+}) {
+  const [when, setWhen] = useState<string>(() =>
+    draft.scheduled_for ? toLocalInput(draft.scheduled_for) : ""
+  );
+  // Sync the local input with the prop when the parent's scheduled_for changes
+  // — same reasoning as ScheduleControl above. After a successful reschedule,
+  // the new prop value flows in and "changed" goes back to falsy on its own.
+  useEffect(() => {
+    setWhen(draft.scheduled_for ? toLocalInput(draft.scheduled_for) : "");
+  }, [draft.scheduled_for]);
+  const changed = when && draft.scheduled_for && when !== toLocalInput(draft.scheduled_for);
+  return (
+    <div style={{ display: "inline-flex", gap: "0.4rem", alignItems: "center", flexWrap: "wrap" }}>
+      <input
+        type="datetime-local"
+        value={when}
+        onChange={(e) => setWhen(e.target.value)}
+        aria-label="Reschedule date and time"
+        style={{
+          ...selectStyle,
+          padding: "0.4rem 0.7rem",
+          fontSize: "0.78rem",
+        }}
+      />
+      {changed && (
+        <button
+          type="button"
+          onClick={() => {
+            if (!when) return;
+            onReschedule(new Date(when).toISOString());
+          }}
+          style={primaryBtn}
+          disabled={saving || !when}
+        >
+          Reschedule
+        </button>
+      )}
+    </div>
+  );
 }

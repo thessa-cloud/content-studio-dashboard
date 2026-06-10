@@ -6,7 +6,7 @@ import TabContainer from "../shared/TabContainer";
 import TabHeader from "../shared/TabHeader";
 import EmptyState from "../shared/EmptyState";
 import PasteFromClaude, { stripCodeFences } from "../shared/PasteFromClaude";
-import CopyPromptButton from "../shared/CopyPromptButton";
+import CopyPromptButton, { FatPromptPreview } from "../shared/CopyPromptButton";
 import { buildPillarsPrompt, buildVoicePrompt, buildHooksPrompt } from "../../../lib/promptBuilders";
 
 type Pillar = {
@@ -1178,6 +1178,7 @@ function InlineEmptyWithClaude({
       <div>
         <CopyPromptButton label={claudeLabel} buildPrompt={buildPrompt} tone="secondary" />
       </div>
+      <FatPromptPreview buildPrompt={buildPrompt} />
     </div>
   );
 }

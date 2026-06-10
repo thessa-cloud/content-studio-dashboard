@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Check, Copy, ExternalLink } from "lucide-react";
+import { Check, Copy, ExternalLink, ChevronDown, ChevronUp } from "lucide-react";
 
 /**
  * CopyPromptButton.
@@ -166,6 +166,219 @@ export default function CopyPromptButton({
       {icon}
       {text}
     </button>
+  );
+}
+
+/**
+ * FatPromptPreview.
+ *
+ * Sibling of CopyPromptButton. Renders the FULL data-injected prompt in a
+ * readable + copyable textarea, with a Copy button and a separate
+ * "Open claude.ai" link. The reason for this component: Thessa explicitly
+ * said "fat prompts kopieerbaar" — customers must SEE what gets pasted into
+ * Claude, not just click a button that copies invisibly to the clipboard.
+ *
+ * Renders as a small "Show full prompt" disclosure under any CopyPromptButton.
+ * Lazily builds the prompt on first open so we don't hit the API for every
+ * tab that has a Claude affordance — only the ones the customer actually
+ * cares to inspect.
+ */
+export function FatPromptPreview({
+  buildPrompt,
+  claudeUrl = "https://claude.ai/new",
+  label = "Show full prompt (read + copy)",
+}: {
+  buildPrompt: () => Promise<string> | string;
+  claudeUrl?: string;
+  label?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [prompt, setPrompt] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function toggle() {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    setOpen(true);
+    if (prompt !== null) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const p = await buildPrompt();
+      setPrompt(p);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      // EMPTY_VAULT is the "go scrape first" path — surface it as a friendly
+      // sentence, not a stack trace.
+      setError(
+        msg.startsWith("EMPTY_VAULT:")
+          ? msg.replace(/^EMPTY_VAULT:\s*/, "")
+          : "Could not build the prompt. Try again in a moment."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function copy() {
+    if (!prompt) return;
+    navigator.clipboard
+      .writeText(prompt)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1800);
+      })
+      .catch(() => {
+        /* noop — Safari can refuse off-gesture clipboard writes, that's fine */
+      });
+  }
+
+  return (
+    <div style={{ marginTop: "0.55rem" }}>
+      <button
+        type="button"
+        onClick={toggle}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "0.3rem",
+          background: "transparent",
+          border: "none",
+          color: "var(--color-burgundy)",
+          fontSize: "0.74rem",
+          cursor: "pointer",
+          fontFamily: "var(--font-body)",
+          fontWeight: 600,
+          padding: 0,
+          textDecoration: "underline",
+        }}
+        aria-expanded={open}
+      >
+        {open ? <ChevronUp size={11} strokeWidth={2.2} /> : <ChevronDown size={11} strokeWidth={2.2} />}
+        {open ? "Hide full prompt" : label}
+      </button>
+      {open && (
+        <div
+          style={{
+            marginTop: "0.55rem",
+            background: "var(--color-cream)",
+            border: "1px solid var(--color-border)",
+            borderRadius: "10px",
+            padding: "0.85rem",
+            textAlign: "left",
+          }}
+        >
+          {loading && (
+            <p style={{ fontSize: "0.78rem", color: "var(--color-text-dim)", margin: 0 }}>
+              Building prompt with your freshest data…
+            </p>
+          )}
+          {error && (
+            <p style={{ fontSize: "0.78rem", color: "var(--color-burgundy)", margin: 0 }}>
+              {error}
+            </p>
+          )}
+          {prompt !== null && !loading && !error && (
+            <>
+              <p
+                style={{
+                  fontSize: "0.66rem",
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
+                  color: "var(--color-taupe)",
+                  fontWeight: 700,
+                  margin: 0,
+                  marginBottom: "0.45rem",
+                }}
+              >
+                Full prompt — your data baked in
+              </p>
+              <textarea
+                readOnly
+                value={prompt}
+                rows={12}
+                onClick={(e) => (e.target as HTMLTextAreaElement).select()}
+                style={{
+                  width: "100%",
+                  padding: "0.7rem 0.85rem",
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                  fontSize: "0.72rem",
+                  lineHeight: 1.5,
+                  border: "1px solid var(--color-border)",
+                  borderRadius: "8px",
+                  background: "#fff",
+                  color: "var(--color-text)",
+                  resize: "vertical",
+                  boxSizing: "border-box",
+                  outline: "none",
+                }}
+              />
+              <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.55rem", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={copy}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.35rem",
+                    background: copied ? "var(--color-burgundy)" : "#fff",
+                    color: copied ? "#fff" : "var(--color-text)",
+                    border: "1px solid var(--color-burgundy)",
+                    padding: "0.4rem 0.9rem",
+                    borderRadius: "8px",
+                    fontSize: "0.76rem",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    fontFamily: "var(--font-body)",
+                  }}
+                >
+                  {copied ? <Check size={12} strokeWidth={2.2} /> : <Copy size={12} strokeWidth={2} />}
+                  {copied ? "Copied" : "Copy prompt"}
+                </button>
+                <a
+                  href={claudeUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.35rem",
+                    background: "transparent",
+                    color: "var(--color-burgundy)",
+                    border: "1px solid var(--color-border)",
+                    padding: "0.4rem 0.9rem",
+                    borderRadius: "8px",
+                    fontSize: "0.76rem",
+                    fontWeight: 600,
+                    textDecoration: "none",
+                    fontFamily: "var(--font-body)",
+                  }}
+                >
+                  <ExternalLink size={12} strokeWidth={2} />
+                  Open claude.ai
+                </a>
+              </div>
+              <p
+                style={{
+                  fontSize: "0.7rem",
+                  color: "var(--color-text-dim)",
+                  marginTop: "0.55rem",
+                  marginBottom: 0,
+                  lineHeight: 1.5,
+                }}
+              >
+                Tip: click the textarea to select all, or hit <strong>Copy prompt</strong>. Then
+                paste into claude.ai. Edit anything you want before sending — this prompt is yours.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

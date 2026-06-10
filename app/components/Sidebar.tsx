@@ -218,7 +218,7 @@ export default function Sidebar({ active, onSelect, isOpen, onClose }: SidebarPr
               }} />
             </span>
             <span style={{ fontSize: "0.75rem", color: "var(--color-text-dim)", letterSpacing: "0.02em" }}>
-              Powered by Claude Code
+              Live · synced with your scrapes
             </span>
           </div>
         </div>

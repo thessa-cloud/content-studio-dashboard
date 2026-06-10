@@ -1,5 +1,5 @@
 "use client";
-import CopyPromptButton from "./CopyPromptButton";
+import CopyPromptButton, { FatPromptPreview } from "./CopyPromptButton";
 
 interface EmptyStateProps {
   /** Big headline, e.g. "No pillars yet" */
@@ -118,6 +118,15 @@ export default function EmptyState({
               {actionLabel}
             </button>
           )}
+        </div>
+      )}
+
+      {/* Visible / copyable / editable fat prompt — the customer SEES what
+          the Claude button would send before they click it. Lazily built on
+          first open. */}
+      {hasClaudeButton && (
+        <div style={{ marginTop: "0.85rem", textAlign: "center" }}>
+          <FatPromptPreview buildPrompt={claudePrompt!} />
         </div>
       )}
 

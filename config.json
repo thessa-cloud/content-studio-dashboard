@@ -1,5 +1,5 @@
 {
-  "_comment": "Customize this file once after deploying. Claude Code can also update this for you, just ask. The dashboard reads from this file on every render.",
+  "_comment": "Customize this file once after deploying. Open the Settings tab to edit these values in-browser, or hand-edit this file. The dashboard reads from this file on every render.",
 
   "brandName": "Your Brand",
   "tagline": "Content intelligence dashboard",
