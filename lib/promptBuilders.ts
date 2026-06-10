@@ -20,6 +20,7 @@
  */
 
 import { fenceData } from "./fenceData";
+import type { TriggerTriplet } from "./settings";
 
 type VaultPost = {
   id: string;
@@ -320,11 +321,29 @@ Return one block per handle, separated by blank lines. Match this format exactly
 - Generic recommendations ("post more"). Every line must be specific to this handle.
 - Encouraging direct copying. Always frame as "what is the underlying pattern".`;
 
-const BODY_DRAFT_CAPTION = (topic: string) => `You are a caption writer trained on the creator's voice (see VOICE DATA below) and their winning hook patterns (see HOOK DATA below). You also have a snapshot of what is currently working for them (see PERFORMANCE SNAPSHOT).
+const BODY_DRAFT_CAPTION = (topic: string, trigger?: TriggerTriplet) => `You are a caption writer trained on the creator's voice (see VOICE DATA below) and their winning hook patterns (see HOOK DATA below). You also have a snapshot of what is currently working for them (see PERFORMANCE SNAPSHOT).
 
 ## Topic
 
-${topic || "(no topic provided — pick the strongest underused pillar from the creator's strategy and write to it)"}
+${topic || (trigger?.topic ? `${trigger.topic} (linked to the trigger word ${trigger.word})` : "(no topic provided, pick the strongest underused pillar from the creator's strategy and write to it)")}${
+  trigger && (trigger.offer || trigger.promise)
+    ? `
+
+## Trigger word context (LINKED to this post)
+
+This caption is tagged with the trigger word **${trigger.word}**. The post must stay coherent with the offer it leads to and the promise the reader is told they will receive:
+
+- Offer being teased: ${trigger.offer || "(not set)"}
+- Topic the offer covers: ${trigger.topic || "(not set)"}
+- Promise to the reader: ${trigger.promise || "(not set)"}
+
+The CTA in every option MUST do two things:
+1. Ask the reader to comment the trigger word "${trigger.word}".
+2. Restate the promise in the creator's voice, so what the reader is "buying into" by commenting is unmistakable. Example shape: "Comment ${trigger.word} and I'll send you <thing that delivers the promise>."
+
+The Body must stay on the topic listed above; do not drift to an unrelated pillar. The Hook should set up the topic so the CTA's promise lands.`
+    : ""
+}
 
 ## What you are writing
 
@@ -414,7 +433,10 @@ export async function buildCompetitorPrompt(): Promise<string> {
   ].join("\n\n");
 }
 
-export async function buildDraftCaptionPrompt(topic = ""): Promise<string> {
+export async function buildDraftCaptionPrompt(
+  topic = "",
+  trigger?: TriggerTriplet
+): Promise<string> {
   const [{ posts }, strategy, perf] = await Promise.all([
     fetchVault(),
     fetchStrategy(),
@@ -423,7 +445,7 @@ export async function buildDraftCaptionPrompt(topic = ""): Promise<string> {
   const top = topSelf(posts, 15);
   return [
     "# Draft a caption in my voice",
-    BODY_DRAFT_CAPTION(topic),
+    BODY_DRAFT_CAPTION(topic, trigger),
     fenceData("VOICE DATA (my rules)", strategy),
     fenceData("HOOK DATA (my winners)", { winners: top }),
     fenceData("PERFORMANCE SNAPSHOT", perf),

@@ -1,6 +1,4 @@
 "use client";
-import { useState } from "react";
-import { Copy, Check, FileText } from "lucide-react";
 import CopyPromptButton from "./CopyPromptButton";
 
 interface EmptyStateProps {
@@ -8,11 +6,6 @@ interface EmptyStateProps {
   title: string;
   /** One-paragraph explanation of what this tab will hold once populated. */
   body: string;
-  /**
-   * Prompt file name in /prompts/. Shown as a hint chip the user can copy if
-   * they want to paste it manually instead of using the Claude button.
-   */
-  promptFile?: string;
   /**
    * The data-injected prompt builder. When provided, EmptyState renders a
    * primary CopyPromptButton that copies the full text + opens claude.ai
@@ -39,32 +32,19 @@ interface EmptyStateProps {
  *      they can type their first row without touching Claude at all.
  *
  * The customer never has to install a CLI, never has to find a file in their
- * GitHub fork, never has to know what &ldquo;Claude Code&rdquo; is.
+ * GitHub fork, never has to know what &ldquo;Claude Code&rdquo; is. Everything
+ * needed for Claude lives inside the button above — the prompt is built with
+ * their data baked in, and the round-trip back lands in the editor on this
+ * same tab.
  */
 export default function EmptyState({
   title,
   body,
-  promptFile,
   claudePrompt,
   claudeButtonLabel,
   actionLabel,
   onAction,
 }: EmptyStateProps) {
-  const [copied, setCopied] = useState(false);
-
-  const promptPath = promptFile ? `/prompts/${promptFile}` : null;
-
-  function copyPath() {
-    if (!promptPath || !navigator.clipboard) return;
-    navigator.clipboard
-      .writeText(promptPath)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      })
-      .catch(() => {});
-  }
-
   const hasClaudeButton = !!claudePrompt;
   const hasHandButton = !!(actionLabel && onAction);
 
@@ -94,7 +74,7 @@ export default function EmptyState({
         style={{
           color: "var(--color-text-dim)",
           fontSize: "0.9rem",
-          marginBottom: hasClaudeButton || hasHandButton || promptPath ? "1.6rem" : 0,
+          marginBottom: hasClaudeButton || hasHandButton ? "1.6rem" : 0,
           lineHeight: 1.55,
         }}
       >
@@ -109,7 +89,6 @@ export default function EmptyState({
             gap: "0.55rem",
             flexWrap: "wrap",
             justifyContent: "center",
-            marginBottom: promptPath ? "1.2rem" : 0,
           }}
         >
           {hasClaudeButton && (
@@ -142,55 +121,6 @@ export default function EmptyState({
         </div>
       )}
 
-      {/* Optional prompt-file hint chip (advanced users who want the raw .md) */}
-      {promptPath && (
-        <div
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "0.5rem",
-            background: "var(--color-cream)",
-            border: "1px solid var(--color-border)",
-            borderRadius: "10px",
-            padding: "0.45rem 0.7rem 0.45rem 0.9rem",
-            fontSize: "0.76rem",
-            color: "var(--color-text-dim)",
-            fontFamily: "monospace",
-          }}
-        >
-          <FileText size={13} strokeWidth={1.8} style={{ color: "var(--color-taupe)" }} />
-          <span>{promptPath}</span>
-          <button
-            type="button"
-            onClick={copyPath}
-            aria-label="Copy prompt path"
-            style={{
-              background: copied ? "var(--color-burgundy)" : "#fff",
-              border: "1px solid var(--color-border)",
-              color: copied ? "#fff" : "var(--color-text-dim)",
-              padding: "0.25rem 0.5rem",
-              borderRadius: "6px",
-              cursor: "pointer",
-              fontSize: "0.7rem",
-              fontFamily: "var(--font-body)",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "0.25rem",
-            }}
-          >
-            {copied ? (
-              <>
-                <Check size={10} strokeWidth={2.4} /> Copied
-              </>
-            ) : (
-              <>
-                <Copy size={10} strokeWidth={2} /> Copy
-              </>
-            )}
-          </button>
-        </div>
-      )}
-
       <p
         style={{
           marginTop: "1.4rem",
@@ -202,7 +132,7 @@ export default function EmptyState({
         }}
       >
         {hasClaudeButton
-          ? "Click → claude.ai opens with the prompt in your clipboard. Paste, wait for the reply, paste the reply back into this tab. No CLI, no setup."
+          ? "Click → claude.ai opens with the prompt already in your clipboard. Paste, wait for the reply, paste the reply back into this tab. No CLI, no setup."
           : "Open claude.ai, paste this prompt, then paste Claude’s reply back into the editor here."}
       </p>
     </div>

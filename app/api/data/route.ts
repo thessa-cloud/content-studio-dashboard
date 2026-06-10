@@ -9,9 +9,11 @@ import { createClient } from "@supabase/supabase-js";
  *   GET    /api/data?tab=drafts                → all drafts (newest first)
  *   GET    /api/data?tab=intel&handle=foo      → latest snapshot for one handle
  *   GET    /api/data?tab=vault                 → raw scrape feed (posts)
+ *   GET    /api/data?tab=settings              → brand / competitors / triggers
  *   GET    /api/data?tab=scrape-meta           → most recent scraped_at
  *
  *   POST   /api/data?tab=drafts                → create draft
+ *   PUT    /api/data?tab=settings              → upsert singleton settings
  *   PATCH  /api/data?tab=drafts                → update draft (body: { id, ...fields })
  *   DELETE /api/data?tab=drafts&id=…           → delete draft
  *
@@ -127,6 +129,15 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    if (tab === "settings") {
+      const { data } = await supabase
+        .from("settings")
+        .select("*")
+        .eq("singleton", true)
+        .maybeSingle();
+      return NextResponse.json({ data: data ?? null });
+    }
+
     if (tab === "scrape-meta") {
       const { data } = await supabase
         .from("scrape_log")
@@ -198,6 +209,80 @@ const WRITABLE_TABS = ["drafts", "strategy"] as const;
 type WritableTab = (typeof WRITABLE_TABS)[number];
 const isWritableTab = (t: string | null): t is WritableTab =>
   t !== null && (WRITABLE_TABS as readonly string[]).includes(t);
+
+export async function PUT(req: NextRequest) {
+  // Singleton upsert for settings. Customer Settings tab calls this on every
+  // Save. We keep a single row identified by `singleton = true` (DB unique
+  // constraint enforces this). First save inserts; subsequent saves update.
+  if (!supabase) return NextResponse.json({ error: "Supabase not configured" }, { status: 503 });
+
+  const tab = req.nextUrl.searchParams.get("tab");
+  if (tab !== "settings") {
+    return NextResponse.json({ error: "PUT only supported for tab=settings" }, { status: 400 });
+  }
+
+  const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+
+  // Normalize/whitelist the fields we accept so a stray field cannot land in
+  // the table. trigger_words must be an array of plain objects shaped like
+  // { word, offer, topic, promise } — we shape-check each entry here so the
+  // UI cannot accidentally send a string array (which is the OLD config.json
+  // shape pre-triplet) and break the schema downstream.
+  type TriggerTriplet = { word: string; offer: string; topic: string; promise: string };
+  const normalizeTriggers = (raw: unknown): TriggerTriplet[] => {
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .map((t) => {
+        if (typeof t === "string") {
+          // Pre-triplet legacy shape — fill blanks so the row is still valid.
+          return { word: t, offer: "", topic: "", promise: "" };
+        }
+        if (t && typeof t === "object") {
+          const o = t as Record<string, unknown>;
+          return {
+            word: typeof o.word === "string" ? o.word : "",
+            offer: typeof o.offer === "string" ? o.offer : "",
+            topic: typeof o.topic === "string" ? o.topic : "",
+            promise: typeof o.promise === "string" ? o.promise : "",
+          };
+        }
+        return null;
+      })
+      .filter((t): t is TriggerTriplet => t !== null && t.word.trim().length > 0);
+  };
+
+  const competitors = Array.isArray(body.competitors)
+    ? (body.competitors as unknown[])
+        .filter((c): c is string => typeof c === "string" && c.trim().length > 0)
+        .map((c) => c.replace(/^@/, "").trim())
+        .slice(0, 5)
+    : [];
+
+  const payload = {
+    singleton: true,
+    // Trim before persist so a customer who fat-fingers a trailing space in
+    // the Brand form doesn't see "REVENU " everywhere in the dashboard. An
+    // empty string after trim collapses to null so the column is
+    // unambiguously "not set" rather than "set to whitespace".
+    brand_name:
+      typeof body.brand_name === "string" ? body.brand_name.trim() || null : null,
+    instagram_handle:
+      typeof body.instagram_handle === "string"
+        ? body.instagram_handle.replace(/^@/, "").trim() || null
+        : null,
+    competitors,
+    trigger_words: normalizeTriggers(body.trigger_words),
+  };
+
+  const { data, error } = await supabase
+    .from("settings")
+    .upsert(payload, { onConflict: "singleton" })
+    .select()
+    .single();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ data });
+}
 
 export async function PATCH(req: NextRequest) {
   if (!supabase) return NextResponse.json({ error: "Supabase not configured" }, { status: 503 });

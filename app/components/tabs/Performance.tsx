@@ -41,7 +41,9 @@ type PerformanceData = {
  *  - Top performing posts (sorted by engagement)
  *  - Pillar and hook breakdown bars
  *
- * Populated by /prompts/3-analyze-winners.md after a scrape.
+ * Populated by the analyse-winners Claude prompt after a scrape (the user
+ * clicks the in-app button which copies a self-contained prompt + opens
+ * claude.ai, then pastes the JSON reply back into a Paste field).
  */
 export default function Performance() {
   const [data, setData] = useState<PerformanceData | null>(null);
@@ -103,8 +105,7 @@ export default function Performance() {
       {!loading && !hasPosts && (
         <EmptyState
           title="No performance data yet"
-          body="After your first scrape, Claude Code surfaces your top posts, best hooks and strongest pillar here. Trigger a scrape with the button above, then run the analysis prompt."
-          promptFile="3-analyze-winners.md"
+          body="After your first scrape, Claude surfaces your top posts, best hooks and strongest pillar here. Trigger a scrape with the button above, then run the analysis prompt on the Strategy tab."
         />
       )}
 

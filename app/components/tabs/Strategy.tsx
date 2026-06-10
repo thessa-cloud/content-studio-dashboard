@@ -57,13 +57,15 @@ type EditSection = "pillars" | "voice" | "hooks" | "campaigns" | "ica" | null;
  * Strategy tab.
  *
  * What lives here:
- *  - Content pillars (extracted by /prompts/1-extract-pillars.md, editable here)
- *  - Voice rules     (extracted by /prompts/2-extract-voice.md, editable here)
- *  - Current campaigns + ICA notes (maintained by /prompts/7-weekly-review.md,
- *    editable here)
+ *  - Content pillars (extracted via the Pillars prompt button, editable here)
+ *  - Voice rules     (extracted via the Voice prompt button, editable here)
+ *  - Current campaigns + ICA notes (editable here by hand)
  *
  * Each section has its own inline edit mode. Saves PATCH the most recent
  * strategy row, or POST a brand-new one on first install.
+ *
+ * No CLI, no file paths. Every section that needs Claude has its own button
+ * that builds a prompt with the user's data baked in and opens claude.ai.
  */
 export default function Strategy() {
   const [data, setData] = useState<StrategyData | null>(null);
@@ -200,7 +202,6 @@ export default function Strategy() {
           body="Click below to copy a prompt pre-filled with your last 30 posts. claude.ai opens in a new tab. Paste, wait for the JSON reply, paste it back here. Or skip Claude and fill the fields by hand with the second button."
           claudePrompt={buildPillarsPrompt}
           claudeButtonLabel="Get pillars from Claude"
-          promptFile="1-extract-pillars.md"
           actionLabel="Start by hand"
           onAction={() => setEditing("pillars")}
         />
@@ -211,7 +212,6 @@ export default function Strategy() {
           {/* Pillars */}
           <Section
             title="Content pillars"
-            promptHint="1-extract-pillars.md"
             onEdit={() => setEditing("pillars")}
             isEditing={editing === "pillars"}
           >
@@ -259,14 +259,17 @@ export default function Strategy() {
                 ))}
               </div>
             ) : (
-              <InlineEmpty body="Click Edit to add your first pillar, or run /prompts/1-extract-pillars.md to extract them automatically." />
+              <InlineEmptyWithClaude
+                body="Click Edit to add your first pillar by hand, or copy a prompt for claude.ai and paste the JSON reply back."
+                buildPrompt={buildPillarsPrompt}
+                claudeLabel="Get pillars from Claude"
+              />
             )}
           </Section>
 
           {/* Voice */}
           <Section
             title="Voice rules"
-            promptHint="2-extract-voice.md"
             onEdit={() => setEditing("voice")}
             isEditing={editing === "voice"}
           >
@@ -414,7 +417,6 @@ export default function Strategy() {
           {/* Hooks */}
           <Section
             title="Hook library"
-            promptHint="3-hook-patterns.md"
             onEdit={() => setEditing("hooks")}
             isEditing={editing === "hooks"}
           >
@@ -465,7 +467,6 @@ export default function Strategy() {
           {/* Campaigns */}
           <Section
             title="Current campaigns"
-            promptHint="7-weekly-review.md"
             onEdit={() => setEditing("campaigns")}
             isEditing={editing === "campaigns"}
           >
@@ -505,14 +506,13 @@ export default function Strategy() {
                 ))}
               </div>
             ) : (
-              <InlineEmpty body="Click Edit to log a campaign, or run /prompts/7-weekly-review.md to capture this week's intent." />
+              <InlineEmpty body="Click Edit to log a campaign you&apos;re running this week. Name it, set status, add an optional note." />
             )}
           </Section>
 
           {/* ICA notes */}
           <Section
             title="ICA notes"
-            promptHint="7-weekly-review.md"
             onEdit={() => setEditing("ica")}
             isEditing={editing === "ica"}
           >
@@ -552,13 +552,11 @@ export default function Strategy() {
 
 function Section({
   title,
-  promptHint,
   onEdit,
   isEditing,
   children,
 }: {
   title: string;
-  promptHint?: string;
   onEdit?: () => void;
   isEditing?: boolean;
   children: React.ReactNode;
@@ -577,11 +575,6 @@ function Section({
       >
         <h2 style={{ fontFamily: "var(--font-header)", fontSize: "1.2rem", margin: 0 }}>{title}</h2>
         <div style={{ display: "flex", alignItems: "center", gap: "0.65rem" }}>
-          {promptHint && (
-            <span style={{ fontSize: "0.7rem", color: "var(--color-text-dim)", fontFamily: "monospace" }}>
-              /prompts/{promptHint}
-            </span>
-          )}
           {onEdit && !isEditing && (
             <button onClick={onEdit} style={editBtn} aria-label={`Edit ${title}`}>
               <Pencil size={12} strokeWidth={1.8} style={{ marginRight: "0.3rem" }} />

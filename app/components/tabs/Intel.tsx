@@ -1,10 +1,10 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import { ExternalLink } from "lucide-react";
-import config from "../../../config.json";
 import TabContainer from "../shared/TabContainer";
 import TabHeader from "../shared/TabHeader";
 import EmptyState from "../shared/EmptyState";
+import { fetchEffectiveSettings } from "../../../lib/settings";
 
 type TrendingPost = {
   hook: string;
@@ -40,13 +40,39 @@ function shortDate(ts?: string): string {
  * Intel tab.
  *
  * Up to 5 competitor handles from config.json. For each: top hooks, top posts,
- * format mix. Filled by /prompts/4-competitor-patterns.md after a scrape.
+ * format mix. Filled by the competitor-patterns Claude prompt after a scrape
+ * (in-app button → claude.ai → paste reply back).
  */
 export default function Intel() {
-  const competitors = ((config.competitors ?? []) as string[]).slice(0, 5);
-  const [active, setActive] = useState<string>(competitors[0] ?? "");
+  // Competitors used to read straight from config.json. Now they come from
+  // the effective settings (Supabase → localStorage → config.json fallback)
+  // so customers who edit the list in Settings see it reflected here without
+  // a redeploy. Initial state is empty until the async fetch resolves —
+  // that's fine, the tabs render once the list arrives.
+  const [competitors, setCompetitors] = useState<string[]>([]);
+  const [active, setActive] = useState<string>("");
   const [data, setData] = useState<CompData | null>(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchEffectiveSettings()
+      .then((s) => {
+        if (cancelled) return;
+        const list = s.competitors.slice(0, 5);
+        setCompetitors(list);
+        // Auto-select the first handle once the list loads. We do NOT
+        // overwrite an existing `active` selection — the customer may have
+        // already clicked a different tab while settings were loading.
+        setActive((cur) => cur || list[0] || "");
+      })
+      .catch(() => {
+        if (!cancelled) setCompetitors([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const load = useCallback((handle: string) => {
     if (!handle) {
@@ -84,8 +110,7 @@ export default function Intel() {
       {!hasCompetitors && (
         <EmptyState
           title="No competitors added"
-          body="Add up to 5 competitor Instagram handles in Settings (or config.json). Once scraped, their top hooks and patterns appear here."
-          promptFile="4-competitor-patterns.md"
+          body="Open the Settings tab and add up to 5 competitor Instagram handles. Once scraped, their top hooks and patterns appear here."
         />
       )}
 
@@ -130,7 +155,6 @@ export default function Intel() {
             <EmptyState
               title={`No data for @${active} yet`}
               body="Run a scrape with the button above, then run the competitor analysis prompt. Top hooks and posts will land here."
-              promptFile="4-competitor-patterns.md"
             />
           )}
 

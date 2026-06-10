@@ -34,8 +34,8 @@ Plus a `[Scrape now]` button + `Last scraped: X hours ago` timestamp on every pa
 2. **Create a Supabase project** (free tier is fine) and paste `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` into Vercel env vars.
 3. **Run the migration.** In Supabase → SQL Editor, paste the contents of `supabase/migrations/0001_initial_schema.sql` and Run. Six tables appear.
 4. **Set a `FUNCTION_SECRET`.** Any long random string. Use the same value inside the `content-scraper` Edge Function as its bearer-token check.
-5. **Open the project in Claude Code** and paste the first prompt from `/prompts/1-extract-pillars.md`.
-6. Refresh the dashboard, your patterns appear.
+5. **Open the dashboard** and start with the Strategy tab. Click **Get pillars from Claude**, it copies a self-contained prompt with your latest scrape baked in and opens claude.ai. Paste, wait, paste the JSON reply back into the editor.
+6. Repeat for Voice rules + Hooks. Your patterns appear on every tab.
 
 Full step-by-step guide (with screenshots) is in `Setup Guide.pdf`.
 
@@ -52,24 +52,22 @@ Edit `config.json` once after deploy. Or ask Claude Code to do it for you.
 }
 ```
 
-## Prompt pack
+## How Claude fits in
 
-12 ready-to-paste prompts live in `/prompts/`. Each one reads your data and writes patterns back to the dashboard.
+Every tab that needs Claude has its own button. Click → the dashboard copies
+a self-contained prompt to your clipboard (with your freshest data already
+baked in) and opens claude.ai in a new tab. Paste → wait → copy Claude's
+reply → paste it back into the editor on the dashboard.
 
-| Prompt | What it does |
+No CLI, no `/prompts/X.md` to memorise, no Claude Code subscription required
+for this loop (any claude.ai login works).
+
+| Tab | What Claude does |
 |---|---|
-| `1-extract-pillars.md` | Reads 30 latest posts, extracts your content pillars |
-| `2-extract-voice.md` | Extracts your voice rules from top 20 captions |
-| `3-analyze-winners.md` | Surfaces your top 10 hooks, topics, formats |
-| `4-competitor-patterns.md` | Top hooks of your competitors |
-| `5-draft-caption.md` | Writes a caption in your voice for a given topic |
-| `6-rewrite-caption.md` | Improves an existing draft using your winners |
-| `7-weekly-review.md` | Reviews past week, updates Strategy |
-| `8-find-content-gaps.md` | What pillars are underused |
-| `9-build-content-week.md` | Drafts 5 to 7 captions for the week |
-| `10-hook-library.md` | Builds your personal hook library |
-| `11-objection-library.md` | Extracts FAQ from comments |
-| `12-monthly-evolution.md` | Big-picture monthly review |
+| Strategy | Extracts your content pillars, voice rules, and hook library from your scrape |
+| Drafts | Writes 3 caption options in your voice for a given topic |
+| Performance | Surfaces top hooks, topics, and formats from your top posts |
+| Intel | Pulls top hooks + format mix from each competitor handle |
 
 ## Tech stack
 
