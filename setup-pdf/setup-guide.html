@@ -27,11 +27,15 @@
 
   /* Each .page = one A4 sheet. page-break-after forces Chrome to
      move on. We sized to A4 (210 x 297 mm) minus zero margin so
-     we manage the padding inside, full bleed allowed for headers. */
+     we manage the padding inside, full bleed allowed for headers.
+     Padding: 30mm top + bottom, 20mm sides. Generous top/bottom
+     so headlines + screenshots breathe and never crash into the
+     page edge. Footer absolute-positioned at bottom 12mm, sits
+     comfortably inside the 30mm bottom gutter. */
   .page {
     width: 210mm;
     min-height: 297mm;
-    padding: 22mm 20mm 22mm 20mm;
+    padding: 30mm 20mm 30mm 20mm;
     box-sizing: border-box;
     page-break-after: always;
     background: #faf7f4;
@@ -294,7 +298,7 @@
   /* Footer on every non-cover page */
   .pagefoot {
     position: absolute;
-    bottom: 10mm;
+    bottom: 12mm;
     left: 20mm;
     right: 20mm;
     display: flex;
