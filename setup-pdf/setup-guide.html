@@ -26,16 +26,20 @@
   body { font-size: 11pt; line-height: 1.55; }
 
   /* Each .page = one A4 sheet. page-break-after forces Chrome to
-     move on. We sized to A4 (210 x 297 mm) minus zero margin so
-     we manage the padding inside, full bleed allowed for headers.
-     Padding: 30mm top + bottom, 20mm sides. Generous top/bottom
-     so headlines + screenshots breathe and never crash into the
-     page edge. Footer absolute-positioned at bottom 12mm, sits
-     comfortably inside the 30mm bottom gutter. */
+     move on. A4 is 297mm tall; with box-sizing: border-box the
+     padding is part of the 297mm, leaving content area = 297mm
+     minus top+bottom padding. Tuning constraint: content area
+     must be tall enough that no page overflows (else Chrome
+     splits that .page across 2 printed pages and leaves a huge
+     cream gap). 25mm top + 25mm bottom = 247mm content area,
+     which is the sweet spot found 2026-06-10 — more breathing
+     room than the original 22mm (was too tight, content crashed
+     into top edge) but still safe (30mm overflowed and added 2
+     blank pages). Sides stay 20mm. */
   .page {
     width: 210mm;
     min-height: 297mm;
-    padding: 30mm 20mm 30mm 20mm;
+    padding: 25mm 20mm 25mm 20mm;
     box-sizing: border-box;
     page-break-after: always;
     background: #faf7f4;
@@ -229,18 +233,24 @@
   }
   .step-title .label { display: block; margin-bottom: 2pt; }
 
-  /* Inline screenshots. cap height so the page still has room. */
+  /* Inline screenshots. Capped at 100mm. With .page padding at
+     25mm top+bottom we have 247mm content area; a screenshot-
+     heavy page (header + caption + 100mm shot + 1 line caption
+     + footer) fits with ~10mm of slack. If you bump padding
+     here, drop max-height by the same amount or you'll get page
+     overflow that splits a single .page across two printed
+     sheets (visible as huge empty cream gap). */
   .shot {
     display: block;
     width: 100%;
-    max-height: 110mm;
+    max-height: 100mm;
     object-fit: contain;
     border: 1px solid #ebe3d6;
     border-radius: 6pt;
     margin: 8pt 0 6pt;
     box-shadow: 0 1pt 3pt rgba(74, 52, 42, 0.06);
   }
-  .shot.small { max-height: 70mm; }
+  .shot.small { max-height: 65mm; }
   .shot-caption {
     font-size: 9pt;
     color: #8c7563;
@@ -298,7 +308,7 @@
   /* Footer on every non-cover page */
   .pagefoot {
     position: absolute;
-    bottom: 12mm;
+    bottom: 10mm;
     left: 20mm;
     right: 20mm;
     display: flex;
