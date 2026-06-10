@@ -1,9 +1,17 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { ExternalLink, Search } from "lucide-react";
+import { ExternalLink, Search, Star, Plus } from "lucide-react";
 import TabContainer from "../shared/TabContainer";
 import TabHeader from "../shared/TabHeader";
 import EmptyState from "../shared/EmptyState";
+import MarkLegacyModal from "../legacy/MarkLegacyModal";
+import StandaloneLegacyModal from "../legacy/StandaloneLegacyModal";
+import {
+  fetchLegacyPieces,
+  buildLegacyIndex,
+  legacyKey,
+  type LegacyPiece,
+} from "../../../lib/legacy";
 
 type VaultPost = {
   id: string;
@@ -41,6 +49,30 @@ export default function Vault() {
   const [sourceFilter, setSourceFilter] = useState<"all" | "self" | "competitor">("all");
   const [typeFilter, setTypeFilter] = useState<"all" | VaultPost["type"]>("all");
 
+  // Legacy state. We hold the raw list so the "Edit legacy" path can hand the
+  // existing row straight to the modal (no second fetch), and we hold the
+  // O(1) index so per-card render stays cheap on a 200-post Vault.
+  const [legacyPieces, setLegacyPieces] = useState<LegacyPiece[]>([]);
+  const legacyIndex = useMemo(() => buildLegacyIndex(legacyPieces), [legacyPieces]);
+  const standaloneLegacies = useMemo(
+    () => legacyPieces.filter((p) => p.source_type === "standalone"),
+    [legacyPieces]
+  );
+  const [legacyOnly, setLegacyOnly] = useState(false);
+
+  // Modal-control state. `markTarget` is the library_post we're marking /
+  // editing; `standaloneTarget` is null for "create new" or a LegacyPiece for
+  // "edit existing standalone".
+  const [markTarget, setMarkTarget] = useState<VaultPost | null>(null);
+  const [standaloneOpen, setStandaloneOpen] = useState(false);
+  const [standaloneTarget, setStandaloneTarget] = useState<LegacyPiece | null>(null);
+
+  const loadLegacy = () => {
+    fetchLegacyPieces()
+      .then((p) => setLegacyPieces(p))
+      .catch(() => setLegacyPieces([]));
+  };
+
   const load = () => {
     setLoading(true);
     fetch("/api/data?tab=vault")
@@ -50,6 +82,7 @@ export default function Vault() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
+    loadLegacy();
   };
 
   useEffect(load, []);
@@ -62,13 +95,35 @@ export default function Vault() {
     return posts.filter((p) => {
       if (sourceFilter !== "all" && p.source !== sourceFilter) return false;
       if (typeFilter !== "all" && p.type !== typeFilter) return false;
+      if (legacyOnly && !legacyIndex.has(legacyKey("library_post", p.id))) return false;
       if (q) {
         const hay = `${p.caption} ${p.hook ?? ""} ${p.handle}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
     });
-  }, [posts, query, sourceFilter, typeFilter]);
+  }, [posts, query, sourceFilter, typeFilter, legacyOnly, legacyIndex]);
+
+  // Standalone legacies surface only inside the Legacy filter — they have no
+  // source row, so showing them in the unfiltered Vault would mix two
+  // different shapes ("scraped post" vs "manual entry") that don't render
+  // identically. Inside Legacy mode they show up as their own cards above
+  // the library_post hits, respecting the search query and type filter so
+  // Thessa can still narrow by caption / hook / story-only.
+  const visibleStandalones = useMemo(() => {
+    if (!legacyOnly) return [];
+    const q = query.trim().toLowerCase();
+    return standaloneLegacies.filter((sl) => {
+      if (typeFilter !== "all" && sl.type !== typeFilter) return false;
+      if (q) {
+        const hay = `${sl.caption ?? ""} ${sl.hook ?? ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      // sourceFilter doesn't apply here — standalone has no handle / no
+      // "self vs competitor" axis. We show them regardless of that pill.
+      return true;
+    });
+  }, [legacyOnly, standaloneLegacies, query, typeFilter]);
 
   return (
     <TabContainer>
@@ -158,13 +213,71 @@ export default function Vault() {
                 { value: "story", label: "Stories" },
               ]}
             />
+
+            {/* Legacy chip — toggle, not part of the FilterGroup pattern
+                because it isn't a 1-of-N choice but a "winners only" gate
+                that stacks on top of the other filters. ★ icon mirrors the
+                per-card badge so the UI reads as one consistent symbol. */}
+            <button
+              onClick={() => setLegacyOnly((v) => !v)}
+              style={{
+                background: legacyOnly ? "var(--color-burgundy)" : "#fff",
+                border: `1px solid ${legacyOnly ? "var(--color-burgundy)" : "var(--color-border)"}`,
+                color: legacyOnly ? "#fff" : "var(--color-text-dim)",
+                padding: "0.4rem 0.85rem",
+                borderRadius: "20px",
+                fontSize: "0.74rem",
+                cursor: "pointer",
+                fontFamily: "var(--font-body)",
+                fontWeight: 600,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.3rem",
+              }}
+            >
+              <Star
+                size={12}
+                strokeWidth={2}
+                fill={legacyOnly ? "#fff" : "none"}
+              />
+              Legacy{legacyPieces.length > 0 ? ` (${legacyPieces.length})` : ""}
+            </button>
+
+            {/* "Add a legacy story" — for winners Apify can't scrape (stories
+                in particular). Sits in the filter row so it's discoverable
+                the moment you flip the Legacy chip on. */}
+            <button
+              onClick={() => {
+                setStandaloneTarget(null);
+                setStandaloneOpen(true);
+              }}
+              style={{
+                background: "var(--color-cream)",
+                border: "1px solid var(--color-border)",
+                color: "var(--color-text)",
+                padding: "0.4rem 0.85rem",
+                borderRadius: "20px",
+                fontSize: "0.74rem",
+                cursor: "pointer",
+                fontFamily: "var(--font-body)",
+                fontWeight: 600,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.3rem",
+                marginLeft: "auto",
+              }}
+            >
+              <Plus size={12} strokeWidth={2.2} />
+              Add a legacy story
+            </button>
           </div>
 
           <p style={{ fontSize: "0.78rem", color: "var(--color-text-dim)", marginBottom: "1rem" }}>
             {filtered.length} of {posts.length} posts
+            {legacyOnly && visibleStandalones.length > 0 && ` · ${visibleStandalones.length} standalone`}
           </p>
 
-          {filtered.length === 0 && (
+          {filtered.length === 0 && visibleStandalones.length === 0 && (
             <div
               style={{
                 background: "var(--color-cream)",
@@ -176,18 +289,110 @@ export default function Vault() {
                 textAlign: "center",
               }}
             >
-              No posts match these filters.
+              {legacyOnly
+                ? "No legacy pieces match these filters. Try [Add a legacy story] or mark a Vault post as legacy."
+                : "No posts match these filters."}
+            </div>
+          )}
+
+          {/* Standalone legacy cards — only shown when Legacy chip is on.
+              These have no source row to decorate, so they live in their
+              own block above the library_post hits. Clicking the body opens
+              the edit modal (same surface that created them). */}
+          {legacyOnly && visibleStandalones.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "0.85rem" }}>
+              {visibleStandalones.map((sl) => (
+                <div
+                  key={sl.id}
+                  style={{
+                    background: "#fff",
+                    border: "1px solid var(--color-border)",
+                    borderLeft: "3px solid var(--color-burgundy)",
+                    borderRadius: "10px",
+                    padding: "0.85rem 1.15rem",
+                    boxShadow: "var(--shadow-sm)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "0.4rem",
+                      marginBottom: "0.4rem",
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: "0.65rem",
+                        background: "var(--color-burgundy-soft, #fdf0f0)",
+                        color: "var(--color-burgundy)",
+                        padding: "0.1rem 0.55rem",
+                        borderRadius: "20px",
+                        fontWeight: 700,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.25rem",
+                      }}
+                    >
+                      <Star size={10} strokeWidth={2} fill="var(--color-burgundy)" />
+                      Standalone legacy
+                    </span>
+                    <Tag>{sl.type}</Tag>
+                    {sl.recycle_status === "active" && (
+                      <Tag tone="dim">
+                        ♻ every {sl.recycle_interval_days}d
+                      </Tag>
+                    )}
+                    {sl.posted_at && (
+                      <span style={{ fontSize: "0.7rem", color: "var(--color-text-dim)", marginLeft: "auto" }}>
+                        {new Date(sl.posted_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ fontSize: "0.86rem", marginBottom: "0.3rem", lineHeight: 1.5 }}>
+                    {sl.hook || (sl.caption ? sl.caption.slice(0, 180) : "(no caption)")}
+                    {!sl.hook && sl.caption && sl.caption.length > 180 ? "..." : ""}
+                  </p>
+                  {sl.performance_note && (
+                    <p style={{ fontSize: "0.74rem", color: "var(--color-text-dim)", marginBottom: "0.4rem", fontStyle: "italic" }}>
+                      {sl.performance_note}
+                    </p>
+                  )}
+                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                    <button
+                      onClick={() => {
+                        setStandaloneTarget(sl);
+                        setStandaloneOpen(true);
+                      }}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: "var(--color-burgundy)",
+                        fontSize: "0.74rem",
+                        cursor: "pointer",
+                        fontWeight: 600,
+                        padding: 0,
+                      }}
+                    >
+                      Edit
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            {filtered.map((p) => (
+            {filtered.map((p) => {
+              const legacyHit = legacyIndex.get(legacyKey("library_post", p.id));
+              return (
               <div
                 key={p.id}
                 style={{
                   background: "#fff",
                   border: "1px solid var(--color-border)",
-                  borderLeft: `3px solid ${p.source === "self" ? "var(--color-burgundy)" : "var(--color-taupe)"}`,
+                  borderLeft: `3px solid ${legacyHit ? "var(--color-burgundy)" : p.source === "self" ? "var(--color-burgundy)" : "var(--color-taupe)"}`,
                   borderRadius: "10px",
                   padding: "0.85rem 1.15rem",
                   boxShadow: "var(--shadow-sm)",
@@ -214,6 +419,31 @@ export default function Vault() {
                   <Tag>{p.type}</Tag>
                   {p.pillar && <Tag tone="dim">{p.pillar}</Tag>}
                   {p.hook_type && <Tag tone="dim">{p.hook_type}</Tag>}
+                  {legacyHit && (
+                    <span
+                      style={{
+                        fontSize: "0.62rem",
+                        background: "var(--color-burgundy-soft, #fdf0f0)",
+                        color: "var(--color-burgundy)",
+                        padding: "0.1rem 0.5rem",
+                        borderRadius: "20px",
+                        fontWeight: 700,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.25rem",
+                        letterSpacing: "0.04em",
+                      }}
+                      title={
+                        legacyHit.recycle_status === "active"
+                          ? `Auto-recycle every ${legacyHit.recycle_interval_days} days`
+                          : "Marked as legacy"
+                      }
+                    >
+                      <Star size={9} strokeWidth={2} fill="var(--color-burgundy)" />
+                      Legacy
+                      {legacyHit.recycle_status === "active" && " ♻"}
+                    </span>
+                  )}
                   {p.posted_at && (
                     <span style={{ fontSize: "0.7rem", color: "var(--color-text-dim)", marginLeft: "auto" }}>
                       {new Date(p.posted_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
@@ -230,34 +460,90 @@ export default function Vault() {
                     justifyContent: "space-between",
                     fontSize: "0.74rem",
                     color: "var(--color-text-dim)",
+                    gap: "0.6rem",
+                    flexWrap: "wrap",
                   }}
                 >
                   <span>
                     {p.likes.toLocaleString()} likes
                     {p.views ? ` · ${p.views.toLocaleString()} views` : ""} · {p.comments} comments
                   </span>
-                  {p.url && (
-                    <a
-                      href={p.url}
-                      target="_blank"
-                      rel="noreferrer"
+                  <div style={{ display: "inline-flex", gap: "0.85rem", alignItems: "center" }}>
+                    <button
+                      onClick={() => setMarkTarget(p)}
                       style={{
-                        color: "var(--color-burgundy)",
+                        background: "transparent",
+                        border: "none",
+                        color: legacyHit ? "var(--color-burgundy)" : "var(--color-text-dim)",
+                        cursor: "pointer",
+                        fontFamily: "var(--font-body)",
+                        fontWeight: 600,
+                        fontSize: "0.74rem",
+                        padding: 0,
                         display: "inline-flex",
                         alignItems: "center",
-                        gap: "0.3rem",
-                        textDecoration: "none",
+                        gap: "0.25rem",
                       }}
                     >
-                      Open <ExternalLink size={11} strokeWidth={2} />
-                    </a>
-                  )}
+                      <Star
+                        size={11}
+                        strokeWidth={2}
+                        fill={legacyHit ? "var(--color-burgundy)" : "none"}
+                      />
+                      {legacyHit ? "Edit legacy" : "Mark as legacy"}
+                    </button>
+                    {p.url && (
+                      <a
+                        href={p.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          color: "var(--color-burgundy)",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.3rem",
+                          textDecoration: "none",
+                        }}
+                      >
+                        Open <ExternalLink size={11} strokeWidth={2} />
+                      </a>
+                    )}
+                  </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </>
       )}
+
+      {/* Mark-as-legacy modal — only mounted when a target exists, so the
+          form state resets cleanly between cards (the modal's own
+          useEffect(open, existing) handles the rest). */}
+      {markTarget && (
+        <MarkLegacyModal
+          open={true}
+          onClose={() => setMarkTarget(null)}
+          onSaved={loadLegacy}
+          source_type="library_post"
+          source_id={markTarget.id}
+          type={markTarget.type}
+          source_hook={markTarget.hook ?? null}
+          source_caption={markTarget.caption ?? null}
+          source_posted_at={markTarget.posted_at ?? null}
+          existing={legacyIndex.get(legacyKey("library_post", markTarget.id)) ?? null}
+        />
+      )}
+
+      <StandaloneLegacyModal
+        open={standaloneOpen}
+        onClose={() => {
+          setStandaloneOpen(false);
+          setStandaloneTarget(null);
+        }}
+        onSaved={loadLegacy}
+        existing={standaloneTarget}
+      />
     </TabContainer>
   );
 }

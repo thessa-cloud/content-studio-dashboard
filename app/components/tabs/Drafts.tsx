@@ -1,11 +1,12 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Copy, Check, Trash2, List, Calendar as CalendarIcon, ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
+import { Plus, Copy, Check, Trash2, List, Calendar as CalendarIcon, ChevronLeft, ChevronRight, AlertCircle, Star, RefreshCw } from "lucide-react";
 import TabContainer from "../shared/TabContainer";
 import TabHeader from "../shared/TabHeader";
 import EmptyState from "../shared/EmptyState";
 import PasteFromClaude, { stripCodeFences } from "../shared/PasteFromClaude";
 import CopyPromptButton, { FatPromptPreview } from "../shared/CopyPromptButton";
+import MarkLegacyModal from "../legacy/MarkLegacyModal";
 import {
   buildDraftCaptionPrompt,
   buildCarouselPrompt,
@@ -14,6 +15,14 @@ import {
   buildReelPrompt,
 } from "../../../lib/promptBuilders";
 import { fetchEffectiveSettings, type TriggerTriplet } from "../../../lib/settings";
+import {
+  fetchLegacyPieces,
+  buildLegacyIndex,
+  legacyKey,
+  triggerRecycleScan,
+  type LegacyPiece,
+  type LegacyScanResult,
+} from "../../../lib/legacy";
 
 type DraftStatus = "draft" | "scheduled" | "posted";
 
@@ -28,6 +37,12 @@ type Draft = {
   scheduled_for: string | null;
   posted_at: string | null;
   pillar?: string | null;
+  hook_type?: string | null;
+  // Surfaced from drafts.notes so the ♻ Recycled badge can render on cards
+  // born from a legacy-recycle scan (the scan writes "♻ Recycled from legacy
+  // #{8hex} — originally posted {YYYY-MM-DD}\nPerformance: {note}" into
+  // notes; the UI greps for the ♻ prefix).
+  notes?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -77,6 +92,57 @@ export default function Drafts() {
   const [draft, setDraft] = useState<NewDraft>(emptyDraft());
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Legacy state. Index lets the per-card render decide in O(1) whether a
+  // posted draft is already marked. legacyOnly chip filters to those rows
+  // (mostly useful from the Posted tab, but works in any status filter).
+  const [legacyPieces, setLegacyPieces] = useState<LegacyPiece[]>([]);
+  const legacyIndex = useMemo(() => buildLegacyIndex(legacyPieces), [legacyPieces]);
+  const [legacyOnly, setLegacyOnly] = useState(false);
+
+  // Modal-control state for marking / editing a posted draft as legacy.
+  const [markTarget, setMarkTarget] = useState<Draft | null>(null);
+
+  // Recycle-scan UI state — last result is kept around as a one-line toast
+  // banner under the filter row so the customer sees "cloned 2, skipped 0"
+  // without an alert(). Auto-clears after 8 s.
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<LegacyScanResult | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
+
+  const loadLegacy = () => {
+    fetchLegacyPieces()
+      .then((p) => setLegacyPieces(p))
+      .catch(() => setLegacyPieces([]));
+  };
+
+  useEffect(() => {
+    loadLegacy();
+  }, []);
+
+  const runScan = async () => {
+    setScanning(true);
+    setScanError(null);
+    try {
+      const result = await triggerRecycleScan();
+      if (!result) {
+        setScanError("Scan failed. Check Settings → audit stream for details.");
+      } else {
+        setScanResult(result);
+        // Refetch drafts so any newly-cloned rows appear immediately, and
+        // refetch legacy so last_recycled_at + recycle_count update on the
+        // pieces we just scanned.
+        load();
+        loadLegacy();
+        // Auto-dismiss the toast so it doesn't linger across navigation.
+        setTimeout(() => setScanResult(null), 8000);
+      }
+    } catch (e) {
+      setScanError((e as Error).message);
+    } finally {
+      setScanning(false);
+    }
+  };
 
   // Triggers come from the Settings tab (Supabase → localStorage → config),
   // not directly from config.json. The triplet shape lets us surface the
@@ -199,7 +265,22 @@ export default function Drafts() {
     [drafts]
   );
 
-  const visible = statusFilter === "all" ? drafts : drafts.filter((d) => d.status === statusFilter);
+  const visible = useMemo(() => {
+    let v = statusFilter === "all" ? drafts : drafts.filter((d) => d.status === statusFilter);
+    if (legacyOnly) {
+      // Two paths into "legacy" for a draft: (1) it IS a legacy-marked draft
+      // (live or posted, doesn't matter), or (2) it WAS born from a recycle
+      // scan and carries the ♻ prefix in its notes. The chip surfaces both
+      // because both are "winner-flavored" rows Thessa might want to bulk-
+      // act on.
+      v = v.filter(
+        (d) =>
+          legacyIndex.has(legacyKey("draft", d.id)) ||
+          isRecycledNotes(d.notes)
+      );
+    }
+    return v;
+  }, [drafts, statusFilter, legacyOnly, legacyIndex]);
 
   return (
     <TabContainer>
@@ -220,7 +301,7 @@ export default function Drafts() {
           marginBottom: "1.5rem",
         }}
       >
-        <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap", alignItems: "center" }}>
           {(["draft", "scheduled", "posted", "all"] as const).map((s) => {
             const active = statusFilter === s;
             const count = s === "all" ? drafts.length : counts[s];
@@ -244,6 +325,63 @@ export default function Drafts() {
               </button>
             );
           })}
+
+          {/* Legacy chip — toggle. Stacks on top of the status filter so
+              Thessa can do "Posted + Legacy" to see all winners she's
+              already marked. ★ icon mirrors the per-card badge. */}
+          <button
+            onClick={() => setLegacyOnly((v) => !v)}
+            style={{
+              background: legacyOnly ? "var(--color-burgundy)" : "var(--color-cream)",
+              border: "none",
+              color: legacyOnly ? "#fff" : "var(--color-text-dim)",
+              padding: "0.4rem 0.85rem",
+              borderRadius: "20px",
+              fontSize: "0.75rem",
+              cursor: "pointer",
+              fontFamily: "var(--font-body)",
+              fontWeight: 600,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.3rem",
+            }}
+          >
+            <Star size={12} strokeWidth={2} fill={legacyOnly ? "#fff" : "none"} />
+            Legacy
+          </button>
+
+          {/* Run recycle scan now — manual trigger only, per Thessa's
+              "no cron" rule. Clones any active legacy_pieces whose
+              recycle_interval_days have elapsed into fresh drafts. */}
+          <button
+            onClick={runScan}
+            disabled={scanning}
+            style={{
+              background: "var(--color-cream)",
+              border: "1px solid var(--color-border)",
+              color: "var(--color-text-dim)",
+              padding: "0.4rem 0.85rem",
+              borderRadius: "20px",
+              fontSize: "0.74rem",
+              cursor: scanning ? "wait" : "pointer",
+              fontFamily: "var(--font-body)",
+              fontWeight: 600,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.3rem",
+              opacity: scanning ? 0.6 : 1,
+            }}
+            title="Clone every eligible legacy piece into a fresh draft."
+          >
+            <RefreshCw
+              size={12}
+              strokeWidth={2}
+              style={{
+                animation: scanning ? "spin 1s linear infinite" : "none",
+              }}
+            />
+            {scanning ? "Scanning…" : "Run recycle scan"}
+          </button>
         </div>
         <div style={{ display: "inline-flex", gap: "0.45rem", alignItems: "center" }}>
           {/* View mode toggle */}
@@ -297,6 +435,47 @@ export default function Drafts() {
           </button>
         </div>
       </div>
+
+      {/* Recycle-scan toast banner. Auto-clears after 8 s; an error sticks
+          until the next scan attempt because the customer needs to see it. */}
+      {scanResult && (
+        <div
+          style={{
+            background: "var(--color-cream)",
+            border: "1px solid var(--color-border)",
+            borderRadius: "10px",
+            padding: "0.6rem 0.95rem",
+            fontSize: "0.78rem",
+            color: "var(--color-text)",
+            marginBottom: "1rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+          }}
+        >
+          <span style={{ color: "var(--color-burgundy)", fontWeight: 700 }}>♻ Recycle scan</span>
+          <span>
+            cloned {scanResult.cloned} draft{scanResult.cloned === 1 ? "" : "s"}
+            {scanResult.skipped > 0 ? ` · skipped ${scanResult.skipped}` : ""}
+            {scanResult.scanned === 0 ? " · nothing was eligible yet" : ""}
+          </span>
+        </div>
+      )}
+      {scanError && (
+        <div
+          style={{
+            background: "#fde9e3",
+            border: "1px solid #e9b1a3",
+            color: "#8a3219",
+            padding: "0.55rem 0.85rem",
+            borderRadius: "10px",
+            fontSize: "0.78rem",
+            marginBottom: "1rem",
+          }}
+        >
+          {scanError}
+        </div>
+      )}
 
       {/* Add form */}
       {addOpen && (
@@ -699,12 +878,16 @@ export default function Drafts() {
 
       {view === "list" && (
       <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-        {visible.map((d) => (
+        {visible.map((d) => {
+          const legacyHit = legacyIndex.get(legacyKey("draft", d.id));
+          const isRecycled = isRecycledNotes(d.notes);
+          return (
           <div
             key={d.id}
             style={{
               background: "#fff",
               border: "1px solid var(--color-border)",
+              borderLeft: legacyHit || isRecycled ? "3px solid var(--color-burgundy)" : undefined,
               borderRadius: "12px",
               padding: "1rem 1.25rem",
               boxShadow: "var(--shadow-sm)",
@@ -718,6 +901,47 @@ export default function Drafts() {
                 {d.slide_count} slide{d.slide_count > 1 ? "s" : ""}
               </Tag>
               {d.trigger_word && <Tag tone="burgundy">{d.trigger_word}</Tag>}
+              {legacyHit && (
+                <span
+                  style={{
+                    fontSize: "0.62rem",
+                    background: "var(--color-burgundy-soft, #fdf0f0)",
+                    color: "var(--color-burgundy)",
+                    padding: "0.1rem 0.55rem",
+                    borderRadius: "20px",
+                    fontWeight: 700,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.25rem",
+                    letterSpacing: "0.04em",
+                  }}
+                  title={
+                    legacyHit.recycle_status === "active"
+                      ? `Auto-recycle every ${legacyHit.recycle_interval_days} days`
+                      : "Marked as legacy"
+                  }
+                >
+                  <Star size={9} strokeWidth={2} fill="var(--color-burgundy)" />
+                  Legacy
+                  {legacyHit.recycle_status === "active" && " ♻"}
+                </span>
+              )}
+              {isRecycled && !legacyHit && (
+                <span
+                  style={{
+                    fontSize: "0.62rem",
+                    background: "var(--color-cream)",
+                    color: "var(--color-burgundy)",
+                    padding: "0.1rem 0.55rem",
+                    borderRadius: "20px",
+                    fontWeight: 700,
+                    letterSpacing: "0.04em",
+                  }}
+                  title={d.notes ?? ""}
+                >
+                  ♻ Recycled
+                </span>
+              )}
             </div>
 
             {d.hook && (
@@ -778,6 +1002,31 @@ export default function Drafts() {
                 <Copy size={12} strokeWidth={1.8} style={{ marginRight: "0.3rem" }} />
                 {copiedId === d.id ? "Copied!" : "Copy"}
               </button>
+              {/* Mark-as-legacy only on posted drafts. Marking a still-draft
+                  row makes no sense (it hasn't been a winner yet — there's
+                  no performance to memorialise), and posted is also the
+                  status where Thessa actually thinks "that one was good,
+                  bank it". */}
+              {d.status === "posted" && (
+                <button
+                  onClick={() => setMarkTarget(d)}
+                  style={{
+                    ...ghostBtn,
+                    color: legacyHit ? "var(--color-burgundy)" : "var(--color-text-dim)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.3rem",
+                  }}
+                  title={legacyHit ? "Edit legacy config" : "Mark this as legacy"}
+                >
+                  <Star
+                    size={11}
+                    strokeWidth={2}
+                    fill={legacyHit ? "var(--color-burgundy)" : "none"}
+                  />
+                  {legacyHit ? "Edit legacy" : "Mark as legacy"}
+                </button>
+              )}
               <button
                 onClick={() => deleteDraft(d.id)}
                 style={{ ...ghostBtn, color: "var(--color-burgundy)", marginLeft: "auto" }}
@@ -788,7 +1037,8 @@ export default function Drafts() {
               </button>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
       )}
 
@@ -806,12 +1056,50 @@ export default function Drafts() {
           and paste a Claude reply, or write one from scratch.
         </p>
       )}
+
+      {/* Mark-as-legacy modal — only mounted with a target so its useEffect
+          resets cleanly between cards. */}
+      {markTarget && (
+        <MarkLegacyModal
+          open={true}
+          onClose={() => setMarkTarget(null)}
+          onSaved={loadLegacy}
+          source_type="draft"
+          source_id={markTarget.id}
+          type={markTarget.type}
+          source_hook={markTarget.hook ?? null}
+          source_caption={markTarget.caption ?? null}
+          source_posted_at={markTarget.posted_at ?? null}
+          existing={legacyIndex.get(legacyKey("draft", markTarget.id)) ?? null}
+        />
+      )}
+
+      {/* RefreshCw spin animation — scoped via styled-jsx so we don't leak a
+          global keyframe (the existing CalendarView already follows this
+          pattern). */}
+      <style jsx global>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </TabContainer>
   );
 }
 
 function cap(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * Tight match for the legacy-recycle sentinel so a customer who pastes a ♻
+ * into their own draft notes doesn't get a false "Recycled" badge. The scan
+ * route writes the exact prefix "♻ Recycled from legacy #" — we anchor to
+ * that full literal and trimStart() to forgive a leading newline / BOM.
+ */
+function isRecycledNotes(notes: string | null | undefined): boolean {
+  if (!notes) return false;
+  return notes.trimStart().startsWith("♻ Recycled from legacy #");
 }
 
 function ContextRow({ label, value }: { label: string; value: string }) {
