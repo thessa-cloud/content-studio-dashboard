@@ -1,5 +1,5 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   BarChart3,
   Sparkles,
@@ -10,6 +10,7 @@ import {
   X,
 } from "lucide-react";
 import config from "../../config.json";
+import { fetchEffectiveSettings } from "../../lib/settings";
 
 type Tab = "drafts" | "strategy" | "performance" | "intel" | "vault" | "settings";
 
@@ -34,7 +35,49 @@ const TAB_GAP = 2;
 
 export default function Sidebar({ active, onSelect, isOpen, onClose }: SidebarProps) {
   const activeIndex = tabs.findIndex(t => t.id === active);
-  const brandName = config.brandName || "Your Brand";
+
+  // Brand name comes from the EFFECTIVE settings (Supabase → localStorage →
+  // config.json), not directly from the bundled config.json. Reading config
+  // statically meant editing brand name in the Settings tab had no effect
+  // here — Thessa: "Als ik een brand name invul veranderd er in de sidebar
+  // niks". We seed with the static config value so the initial paint is not
+  // blank, then refresh from the effective source on mount AND whenever
+  // Settings emits a `cs-settings:saved` event after a successful save.
+  const [brandName, setBrandName] = useState<string>(
+    config.brandName || "Your Brand"
+  );
+  useEffect(() => {
+    let cancelled = false;
+    async function refresh() {
+      try {
+        const s = await fetchEffectiveSettings();
+        if (cancelled) return;
+        // Empty brand_name from the effective layer means the customer
+        // genuinely cleared it; fall back to the deploy default rather than
+        // showing "" in the header.
+        setBrandName(s.brand_name?.trim() || config.brandName || "Your Brand");
+      } catch {
+        // Network or parse error — keep whatever brand name we already had.
+      }
+    }
+    refresh();
+    // Settings.tsx dispatches this event after a successful save (Supabase
+    // or localStorage), so the sidebar picks up the new value without a
+    // page reload.
+    const onSettingsSaved = () => refresh();
+    window.addEventListener("cs-settings:saved", onSettingsSaved);
+    // If a second tab edited settings (localStorage path), the `storage`
+    // event fires here. Same handler — refetch and re-render.
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "cs-settings") refresh();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("cs-settings:saved", onSettingsSaved);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
 
   // Body scroll lock + Escape handler when mobile drawer is open
   useEffect(() => {

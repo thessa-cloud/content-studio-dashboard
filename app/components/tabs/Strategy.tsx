@@ -1175,10 +1175,19 @@ function InlineEmptyWithClaude({
       }}
     >
       <p style={{ fontSize: "0.82rem", color: "var(--color-text-dim)", margin: 0 }}>{body}</p>
+      {/* Prompt FIRST — the customer reads what would go into Claude before
+          the button. Thessa's UX note: "de prompt boven de claude knop, dat
+          is de volgorde waarin ze ook werkt". Opens by default.
+          Negative marginTop neutralizes FatPromptPreview's built-in 0.55rem
+          top margin, which would otherwise stack on top of the parent flex
+          gap (0.65rem) and create uneven vertical rhythm versus the gap
+          below this block to the CopyPromptButton. */}
+      <div style={{ marginTop: "-0.55rem" }}>
+        <FatPromptPreview buildPrompt={buildPrompt} defaultOpen />
+      </div>
       <div>
         <CopyPromptButton label={claudeLabel} buildPrompt={buildPrompt} tone="secondary" />
       </div>
-      <FatPromptPreview buildPrompt={buildPrompt} />
     </div>
   );
 }

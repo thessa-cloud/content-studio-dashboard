@@ -317,13 +317,25 @@ export default function Drafts() {
             New draft
           </p>
 
-          {/* Round-trip with Claude: button copies the fat prompt (voice +
-              hooks + perf + trigger triplet if one is picked) so the customer
-              can paste it into claude.ai. The PasteFromClaude widget below
-              accepts the reply. Generating a prompt without first picking a
-              trigger is fine — the prompt just won't have the trigger
-              context block. */}
-          <div style={{ marginBottom: "0.6rem", display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
+          {/* Visible fat prompt FIRST — the writer reads what would go into
+              Claude before they decide to click the button. Thessa's UX
+              note: "de prompt boven de claude knop, dat is de volgorde
+              waarin ze ook werkt". So the prompt opens by default and the
+              "Draft a caption with Claude" button sits underneath as the
+              follow-up action. */}
+          <div style={{ marginBottom: "0.6rem" }}>
+            <FatPromptPreview
+              buildPrompt={() => buildDraftCaptionPrompt("", selectedTrigger ?? undefined)}
+              label="Show the full Claude prompt (read + copy)"
+              defaultOpen
+              cacheKey={selectedTrigger?.word ?? "none"}
+            />
+          </div>
+
+          {/* Then the round-trip button. It copies the same fat prompt the
+              customer just read above and opens claude.ai in a new tab.
+              The PasteFromClaude widget below accepts the reply. */}
+          <div style={{ marginBottom: "0.85rem", display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
             <CopyPromptButton
               label={
                 selectedTrigger
@@ -338,16 +350,6 @@ export default function Drafts() {
                 ? "Claude will write 3 captions on the linked topic, with the CTA grounded in the linked promise."
                 : "Pick a trigger word above to ground the CTA in your linked offer/promise."}
             </span>
-          </div>
-
-          {/* Visible fat prompt — the writer SEES the exact prompt the button
-              above sends, can read it, copy it manually, or edit it before
-              pasting into claude.ai. No more invisible clipboard magic. */}
-          <div style={{ marginBottom: "0.85rem" }}>
-            <FatPromptPreview
-              buildPrompt={() => buildDraftCaptionPrompt("", selectedTrigger ?? undefined)}
-              label="Show the full Claude prompt (read + copy)"
-            />
           </div>
 
           <PasteFromClaude<ParsedDraftOption[]>

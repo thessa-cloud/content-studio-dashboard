@@ -193,6 +193,16 @@ export default function Settings() {
         // Refetch so the source flag updates and any legacy rows clear.
         const fresh = await fetchEffectiveSettings();
         setSettings(fresh);
+        // Tell the rest of the app the effective settings just changed so
+        // the Sidebar (and any other listener) picks up the new brand name /
+        // handle / triggers without a page reload. Thessa was typing a brand
+        // name in this form and seeing nothing change in the sidebar — this
+        // event is the bridge between writer (this tab) and readers (sidebar
+        // and elsewhere). The "storage" event covers the cross-tab case;
+        // this custom event covers same-tab live updates.
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("cs-settings:saved"));
+        }
       } else {
         setSaveMsg({ kind: "err", text: res.error ?? "Could not save." });
       }

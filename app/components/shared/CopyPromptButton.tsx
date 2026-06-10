@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, Copy, ExternalLink, ChevronDown, ChevronUp } from "lucide-react";
 
 /**
@@ -187,16 +187,80 @@ export function FatPromptPreview({
   buildPrompt,
   claudeUrl = "https://claude.ai/new",
   label = "Show full prompt (read + copy)",
+  defaultOpen = false,
+  cacheKey,
 }: {
   buildPrompt: () => Promise<string> | string;
   claudeUrl?: string;
   label?: string;
+  /**
+   * When true, the prompt opens (and starts building) on mount so the
+   * customer sees the full text immediately, without having to click a
+   * disclosure. Use this when the FatPromptPreview is the PRIMARY element
+   * on the screen (e.g. above the "Open Claude" button), where the user's
+   * natural eye path is "read the prompt → then click the button".
+   */
+  defaultOpen?: boolean;
+  /**
+   * Stable primitive value that identifies which "input bundle" the prompt
+   * is built from. When it changes, the cached prompt is invalidated and
+   * the textarea rebuilds. Example: when the customer picks a different
+   * trigger word in Drafts, pass `cacheKey={selectedTrigger?.word ?? "none"}`
+   * so the visible prompt reflects the new trigger. Without this, the
+   * `defaultOpen` path would happily show a stale prompt after a state
+   * change because `buildPrompt` is a fresh closure but the effect only
+   * runs on mount.
+   */
+  cacheKey?: string | number | null;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [prompt, setPrompt] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Build (or rebuild) the prompt:
+  //   - on mount when defaultOpen is true → start visible with fresh text
+  //   - whenever cacheKey changes → invalidate cached prompt; if defaultOpen
+  //     is true we also kick off a fresh build so the visible textarea
+  //     updates; if lazy, the next manual toggle() will rebuild because
+  //     `prompt` is reset to null.
+  //
+  // We do NOT depend on `buildPrompt` itself — it's a fresh closure on every
+  // parent render and would cause an infinite refetch loop. Use `cacheKey`
+  // to signal "the data the prompt depends on has changed".
+  useEffect(() => {
+    if (!defaultOpen) {
+      // Lazy path: just invalidate the cached prompt so the next manual
+      // open refetches. No fetch yet.
+      setPrompt(null);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    setPrompt(null);
+    (async () => {
+      try {
+        const p = await buildPrompt();
+        if (!cancelled) setPrompt(p);
+      } catch (e) {
+        if (cancelled) return;
+        const msg = e instanceof Error ? e.message : String(e);
+        setError(
+          msg.startsWith("EMPTY_VAULT:")
+            ? msg.replace(/^EMPTY_VAULT:\s*/, "")
+            : "Could not build the prompt. Try again in a moment."
+        );
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultOpen, cacheKey]);
 
   async function toggle() {
     if (open) {

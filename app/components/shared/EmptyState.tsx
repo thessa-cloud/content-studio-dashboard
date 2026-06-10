@@ -81,7 +81,24 @@ export default function EmptyState({
         {body}
       </p>
 
-      {/* Primary CTAs */}
+      {/* Visible / copyable / editable fat prompt FIRST — the customer
+          READS what would go into Claude before they decide to click the
+          button. Thessa's UX note: "de prompt boven de claude knop, dat is
+          de volgorde waarin ze ook werkt". Opens by default so the prompt
+          is the primary visible content of the empty state. */}
+      {hasClaudeButton && (
+        <div style={{ marginBottom: "1rem" }}>
+          {/* The disclosure toggle button inherits the card's textAlign:center
+              so it sits centered above the CTAs; the inner cream box that
+              holds the textarea has its own textAlign:left so the prompt
+              reads naturally inside that box. */}
+          <FatPromptPreview buildPrompt={claudePrompt!} defaultOpen />
+        </div>
+      )}
+
+      {/* Then the CTAs below the prompt. The Claude button copies the same
+          text the customer just read and opens claude.ai. The hand-action
+          button (when present) is the "skip Claude, type it myself" path. */}
       {(hasClaudeButton || hasHandButton) && (
         <div
           style={{
@@ -118,15 +135,6 @@ export default function EmptyState({
               {actionLabel}
             </button>
           )}
-        </div>
-      )}
-
-      {/* Visible / copyable / editable fat prompt — the customer SEES what
-          the Claude button would send before they click it. Lazily built on
-          first open. */}
-      {hasClaudeButton && (
-        <div style={{ marginTop: "0.85rem", textAlign: "center" }}>
-          <FatPromptPreview buildPrompt={claudePrompt!} />
         </div>
       )}
 
