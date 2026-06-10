@@ -6,7 +6,13 @@ import TabHeader from "../shared/TabHeader";
 import EmptyState from "../shared/EmptyState";
 import PasteFromClaude, { stripCodeFences } from "../shared/PasteFromClaude";
 import CopyPromptButton, { FatPromptPreview } from "../shared/CopyPromptButton";
-import { buildDraftCaptionPrompt } from "../../../lib/promptBuilders";
+import {
+  buildDraftCaptionPrompt,
+  buildCarouselPrompt,
+  buildFreshHooksPrompt,
+  buildStoryPrompt,
+  buildReelPrompt,
+} from "../../../lib/promptBuilders";
 import { fetchEffectiveSettings, type TriggerTriplet } from "../../../lib/settings";
 
 type DraftStatus = "draft" | "scheduled" | "posted";
@@ -349,6 +355,53 @@ export default function Drafts() {
               {selectedTrigger
                 ? "Claude will write 3 captions on the linked topic, with the CTA grounded in the linked promise."
                 : "Pick a trigger word above to ground the CTA in your linked offer/promise."}
+            </span>
+          </div>
+
+          {/* Format-specific Claude buttons. Each one carries the framework
+              for ONE Instagram surface (carousel slides, 10 fresh hooks for
+              one topic, story arc, B-roll-or-voiceover reel script). The
+              customer reads the "Draft a caption with Claude" prompt above
+              and picks the format that matches what they're actually about
+              to ship. Trigger word context flows into each (where relevant)
+              so the CTA stays linked to the offer/promise. */}
+          <div style={{ marginBottom: "0.85rem" }}>
+            <p
+              style={{
+                fontSize: "0.7rem",
+                color: "var(--color-text-dim)",
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                marginBottom: "0.5rem",
+                fontWeight: 700,
+              }}
+            >
+              Or pick a format-specific prompt
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
+              <CopyPromptButton
+                label="Carousel (slide-by-slide)"
+                buildPrompt={() => buildCarouselPrompt("", selectedTrigger ?? undefined)}
+                tone="secondary"
+              />
+              <CopyPromptButton
+                label="10 fresh hooks for a topic"
+                buildPrompt={() => buildFreshHooksPrompt("", "")}
+                tone="secondary"
+              />
+              <CopyPromptButton
+                label="Story sequence (1 to 4 slides)"
+                buildPrompt={() => buildStoryPrompt("", selectedTrigger ?? undefined, "", "")}
+                tone="secondary"
+              />
+              <CopyPromptButton
+                label="Reel script (B-roll or voiceover)"
+                buildPrompt={() => buildReelPrompt("", selectedTrigger ?? undefined, "")}
+                tone="secondary"
+              />
+            </div>
+            <span style={{ fontSize: "0.7rem", color: "var(--color-text-dim)", display: "block", marginTop: "0.45rem" }}>
+              Each one builds a fat prompt with your voice rules + winners baked in. Paste into Claude, paste the reply back below, hit Apply.
             </span>
           </div>
 

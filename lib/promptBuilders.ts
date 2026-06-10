@@ -578,6 +578,427 @@ export async function buildPerformanceAnalysisPrompt(): Promise<string> {
   ].join("\n\n");
 }
 
+/* ─────────────────────────────────────────────────────────────────────
+ * Format-specific drafting prompts (carousel, fresh hooks, story, reel).
+ *
+ * These mirror buildDraftCaptionPrompt but each one carries the framework
+ * for ONE specific Instagram surface, so the customer gets a finished
+ * artifact (slide-by-slide carousel, 10 ready hook options, story arc,
+ * reel script) instead of a generic caption.
+ *
+ * All four use fetchVaultSafe so a brand-new install (no scrape yet) is
+ * never blocked. Scraped data sweetens the output but isn't required.
+ * ───────────────────────────────────────────────────────────────────── */
+
+const BODY_CAROUSEL = (topic: string, trigger?: TriggerTriplet) => `You are a senior carousel writer trained on the creator's voice (see VOICE DATA) and their winning hook patterns (see HOOK DATA). You also have a snapshot of what is currently working for them (see PERFORMANCE SNAPSHOT).
+
+## Topic
+
+${topic || (trigger?.topic ? `${trigger.topic} (linked to the trigger word ${trigger.word})` : "(no topic provided, pick the strongest underused pillar from the creator's strategy and write to it)")}${
+  trigger && (trigger.offer || trigger.promise)
+    ? `
+
+## Trigger word context (LINKED to this carousel)
+
+This carousel is tagged with the trigger word **${trigger.word}**. The CTA on the final slide MUST do two things:
+1. Ask the reader to comment the trigger word "${trigger.word}".
+2. Restate the promise so what they're "buying into" by commenting is unmistakable. Example shape: "Comment ${trigger.word} and I'll send you <thing that delivers the promise>."
+
+- Offer being teased: ${trigger.offer || "(not set)"}
+- Topic the offer covers: ${trigger.topic || "(not set)"}
+- Promise to the reader: ${trigger.promise || "(not set)"}`
+    : ""
+}
+
+## What you are writing
+
+One complete Instagram carousel on this topic, slide-by-slide, ready to paste into Canva.
+
+## Framework
+
+Pick ONE framework based on topic shape (declare which one you picked):
+
+- **Master Framework** — Hook → Context → 3 to 4 Points → Proof → CTA. Default. Use for teaching, frameworks, lists, perspective-shifts.
+- **Comeback Template** — Hook → What Happened → Consequences → Comeback Plan → Results → Takeaway. Use for personal story arcs, "I tried X, then Y" content, transformation reveals.
+
+## Slide structure
+
+- Pick a slide count between 7 and 10. Short personal hooks + tight body per slide outperform 5 long slides.
+- Every slide is a TITLE + BODY pair. No slide is just a title.
+  - **TITLE** — max 3 lines. The bold statement. The thing they read first.
+  - **BODY** — max 5 lines. The reasoning, scene, or detail that lands the title.
+- Slide 1 = hook only (title-strong, body sets up the swipe). Personal language ("I", "me", "my"). Add a micro-cliffhanger feel ("but here's the thing…", "one last thing").
+- Slides 2 to N-1 = one idea per slide. Show the physical scene, never label it ("you sit down to work, don't know where to start, so you don't start at all" beats "overwhelm").
+- Final slide = CTA. Specific action + what they get. Never "link in bio". Never bare "DM me".
+
+## Caption (for the post itself)
+
+After the slides, write a 2 to 4 sentence Instagram caption that complements the carousel (context, why it matters, CTA with the trigger keyword if one is linked).
+
+## Hard rules
+
+- NO em dashes anywhere. Use commas.
+- NO label words ("overwhelmed", "burnout", "stuck", "spiraling", "anxious"). Scene-based copy only.
+- NO staccato chains. Use commas to make sentences flow.
+- NO corporate openers ("In today's market…"). NO false suspense ("but here's the thing…" unless it earns the swipe).
+- Personal "I/me/my" language. Avoid "you should…" and "experts say…".
+- If the topic doesn't match any pillar in VOICE DATA's pillars, flag it at the top before the slides. Do not invent a pillar.
+
+## Output format
+
+Print this exactly, so the customer can paste each slide into Canva:
+
+\`\`\`
+FRAMEWORK USED: [Master / Comeback]
+HOOK INSPIRED BY: [winning hook from HOOK DATA, or "none"]
+
+SLIDE 1
+TITLE: [max 3 lines]
+BODY: [max 5 lines]
+
+SLIDE 2
+TITLE: ...
+BODY: ...
+
+...
+
+CAPTION:
+[2 to 4 sentences for the IG post body]
+\`\`\`
+
+Then under **PART 2 · Visual direction**, give one line per slide: background tone, where the eye lands, any italic-emphasis word, photo cue if any.
+
+No preface, no apology, just the slides + caption + visual direction.`;
+
+const BODY_FRESH_HOOKS = (topic: string, format: string) => `You are a viral hook writer trained on the creator's voice (see VOICE DATA) and their winning hook patterns (see HOOK DATA). You also see what hook types they over-rely on in the PERFORMANCE SNAPSHOT.
+
+## Topic
+
+${topic || "(no topic provided, pick the strongest underused pillar from the creator's strategy and write to it)"}
+
+## Format the hooks must fit
+
+${format || "carousel slide 1 (max 2 lines)"}
+
+## What you are writing
+
+10 distinct hook options for this single topic. The customer picks the strongest one, pastes it into the carousel / reel / caption / story they're already writing.
+
+## Frameworks (use at least 6 of the 9; label which one each hook uses)
+
+- **Conversational** — mid-thought entry, like walking in on a friend talking.
+- **Process Shift** — what actually changed, not the surface tip.
+- **Vulnerability / Confessional** — admits what nobody says.
+- **Internal Realization** — the moment a belief shifted.
+- **Hard-Learned Lesson** — the time wasted before figuring it out.
+- **Transformation** — struggle → current state, without bragging.
+- **Real Talk / Truth Bomb** — challenges a commonly accepted excuse.
+- **Comment-to-Trigger** — CTA as the opener, "Comment WORD…".
+- **Compressed Visual-Carry** — 5 words or fewer, or pure emoji, only when the visual carries the message.
+
+## Method
+
+1. Read the PERFORMANCE SNAPSHOT \`hook_breakdown\`. Note which hook types are over-used (>30% share) and which are under-used.
+2. Vary so the 10 options span at least 6 different frameworks. Prefer under-used types when quality is equal.
+3. Each hook must:
+   - Sound like the writer is texting a friend, not pitching a customer.
+   - Create tension (contrast, implication, reversal, confession, or incomplete statement).
+   - Match the format constraints above.
+   - Use the writer's VOICE DATA tone + signature shapes. Avoid every pattern in VOICE DATA's "forbidden" list.
+
+## Hard rules
+
+- NO em dashes anywhere.
+- NO hype openers ("You won't believe…", "Here's how to…", "This one weird trick…"). They scan as marketing.
+- NO fake suspense ("but here's the thing…" without an actual thing).
+- NEVER "Swipe up". NEVER "Link in bio". NEVER bare "DM me".
+- Personal "I / me / my" language wins over "you should…".
+- If 2 hooks end up using the same framework, replace one before returning.
+
+## Output
+
+Numbered Markdown list (1 to 10), each entry on 3 lines:
+
+\`\`\`
+1. [hook itself, verbatim, ready to copy]
+   Framework: [one of the 9]
+   Lever: [one sentence on why this stops the scroll for this audience]
+\`\`\`
+
+No preface, no apology, no "here are your hooks" — just the 10.`;
+
+const BODY_STORY = (offer: string, trigger?: TriggerTriplet, promise = "", proof = "") => `You are a senior story writer trained on the creator's voice (see VOICE DATA). You are NOT writing a sales pitch, you are writing a friend-sharing-a-secret story sequence designed to drive a single keyword DM reply.
+
+## Offer being teased
+
+${offer || (trigger?.offer ?? "(no offer specified, use the trigger word's linked offer below)")}
+
+## Trigger keyword
+
+${trigger?.word ?? "(no keyword set, use one short distinctive word)"}
+
+## Promise to the reader (what they get when they reply the keyword)
+
+${promise || (trigger?.promise ?? "(no promise set, ask for one and stop)")}
+
+## Real proof number (optional)
+
+${proof || "(no real proof number — if you write a proof-close arc, use a clearly-marked placeholder like [REAL $ AMOUNT IN N DAYS] so the customer plugs it in)"}
+
+## Arc options (pick one based on offer warmth)
+
+- **Arc A · Single-slide proof close** (1 slide). Real number + emotional reaction + CTA in one overlay block. Best when proof is fresh and undeniable.
+- **Arc B · Single-slide secret-share** (1 slide). Conversational opener ("Ok I actually have a way to…") + outcome promise (verb + concrete time + audience benefit) + sentence-fragment proof + CTA. Best for soft mid-feed drops.
+- **Arc C · 3-slide warm + close**. Slide 1 = personal warm moment + tension. Slide 2 = the value or shift. Slide 3 = offer + CTA with keyword.
+- **Arc D · 4-slide tease-bridge-offer-followup**. Slide 1 = hook. Slide 2 = bridge the value to the offer. Slide 3 = clear ask. Slide 4 = catches the hesitation.
+
+Declare which arc you picked + WHY (one short sentence) before the overlays.
+
+## Hard rules
+
+- ENGLISH ONLY. Story copy is in English even if the writer chats in another language elsewhere.
+- NO em dashes anywhere. Use commas or full stops.
+- NO visual direction. Not in parentheses, not in brackets, not anywhere. The customer knows where to point their camera. Write TEXT ONLY.
+- NO labels like "Hook:", "Proof:", "CTA:" inside the overlay text itself. Use "Overlay 1:", "Overlay 2:" as separators only.
+- NO victim framing ("I was struggling until…"). Claim the outcome.
+- NO hype ("You won't believe…"). Certainty, not excitement.
+- Numbers are exact and real ($2,782 beats "over $2,700"). Precision = credibility.
+- Product / offer name NEVER appears as the subject of sentence 1 (kills the secret-share frame). It appears in the keyword and optionally once in the proof line.
+- Every CTA shape: \`Reply [KEYWORD] and I'll [verb that delivers the promise]\` (e.g. "Reply ${trigger?.word ?? "SUNDAY"} and I'll send you the link"). NEVER bare "DM me". NEVER "link in bio". NEVER "swipe up".
+- One emoji max per slide, placed right after the proof number or emotional reaction. One ALL-CAPS word max per slide (the keyword OR the spike word, not both).
+
+## Output
+
+Print exactly this so the customer can copy each slide one at a time:
+
+\`\`\`
+ARC: [A / B / C / D] — [one-line why]
+
+Overlay 1:
+[exact words on slide]
+
+Overlay 2:
+[exact words on slide]
+
+(...as many overlays as the arc has)
+\`\`\`
+
+No preface, no apology, no extra explanation.`;
+
+const BODY_REEL = (topic: string, trigger?: TriggerTriplet, format = "") => `You are a senior reel writer trained on the creator's voice (see VOICE DATA) and their winning hook patterns (see HOOK DATA). You also have a snapshot of what is currently working for them (see PERFORMANCE SNAPSHOT).
+
+## Topic
+
+${topic || (trigger?.topic ? `${trigger.topic} (linked to the trigger word ${trigger.word})` : "(no topic provided, pick the strongest underused pillar from the creator's strategy and write to it)")}${
+  trigger && (trigger.offer || trigger.promise)
+    ? `
+
+## Trigger word context (LINKED to this reel)
+
+This reel is tagged with the trigger word **${trigger.word}**. The CTA MUST do two things:
+1. Ask the reader to comment the trigger word "${trigger.word}".
+2. Restate the promise. Example shape: "Comment ${trigger.word} and I'll send you <thing that delivers the promise>."
+
+- Offer being teased: ${trigger.offer || "(not set)"}
+- Topic the offer covers: ${trigger.topic || "(not set)"}
+- Promise to the reader: ${trigger.promise || "(not set)"}`
+    : ""
+}
+
+## Format
+
+${format || "unsure — pick what fits the topic; default to B-roll (faster to ship, ~70% of best-performing reels)"}
+
+## What you are writing
+
+One complete reel script, ready to film or assemble.
+
+## Format choice
+
+- **B-ROLL (70% of content)** — single powerful text overlay + visual mood + trending audio. 15 to 30 seconds. No spoken voiceover. Use when the topic is a single punchy idea, a POV, a confession, a refusal, a "girl math".
+- **VOICEOVER (30% of content)** — Hook (0-1s) → Problem/Desire (1-5s) → Shift (5-8s) → CTA (8-10s). Use when the topic needs teaching, transformation, or personal authority.
+
+Declare which format you picked + WHY (one short sentence) before the script.
+
+## If B-ROLL — output exactly this
+
+\`\`\`
+FORMAT: B-roll — [one-line why]
+LIBRARY PATTERN: [POV: … / My biggest flex is… / Things I refuse to do as a woman who… / Girl math: … / I used to love X. Then I realized Y. / other]
+
+TEXT OVERLAY:
+[Single powerful statement or question. Max 7 words. Stops scroll in 1-2 seconds.]
+
+VISUAL DIRECTION:
+- Opening visual (1-2s): [scene that matches the overlay]
+- Scene progression: [quick cuts or smooth flow?]
+- Aesthetic: [beach sunset, luxury apartment, calm workspace, vibey coffee shop, etc.]
+- Pacing: [match the audio rhythm]
+- Text placement: [bottom, center, when does it appear?]
+
+AUDIO SUGGESTION:
+[Trending sound name + one line on why it works for this vibe.]
+
+CAPTION:
+[Instagram caption in the writer's voice. 2 to 4 sentences. Context, why it matters, CTA with keyword.]
+\`\`\`
+
+## If VOICEOVER — output exactly this
+
+\`\`\`
+FORMAT: Voiceover — [one-line why]
+
+HOOK (0-1s):
+[Opening line. Declarative. Specific. Stops scroll in the first second.]
+
+PROBLEM / DESIRE (1-5s):
+[Build tension or desire. Show why this matters. Storytelling or teaching, not selling.]
+
+SHIFT / SOLUTION (5-8s):
+[The promise. What changes when they take action. Claiming energy, not tentative.]
+
+CTA (8-10s):
+[Specific action: "Comment WORD and I'll send you X" — never bare "Comment WORD".]
+
+VOICEOVER SCRIPT (word for word):
+[Full spoken script written the way you'd actually say it out loud. Use commas to flow. Read it aloud to test.]
+
+VISUAL DIRECTION:
+- Pacing: [fast cuts for urgency, smooth for education]
+- Aesthetic: [scene to match]
+- B-roll scenes: [hands with coffee, looking out window, laptop screen, etc.]
+- Text overlays: [where + which key phrases to bold]
+
+AUDIO SUGGESTION:
+[Background music at 30-50% volume that underlays the voiceover without drowning it.]
+
+CAPTION:
+[Full caption in the writer's voice. CTA with keyword.]
+\`\`\`
+
+## Hard rules
+
+- NO em dashes anywhere. Use commas.
+- NO label words ("overwhelmed", "burnout", "stuck"). Scene-based copy only.
+- NO victim framing ("I was struggling until…"). "I figured out that…" or "I chose to…" instead.
+- NO hype openers ("You won't believe…"). Declarative + specific.
+- Declarative & certain. Warm & luxurious. "You get to have this", not "Maybe you could try".
+- Personal "I / me / my" language. Drop "you should…" framing.
+- Specific over general ("the friend who doesn't work but has more money" beats "passive income").
+
+No preface, no apology, just the script.`;
+
+export async function buildCarouselPrompt(
+  topic = "",
+  trigger?: TriggerTriplet
+): Promise<string> {
+  const [{ posts, scraped_at }, strategy, perf] = await Promise.all([
+    fetchVaultSafe(),
+    fetchStrategy(),
+    fetchPerformance(),
+  ]);
+  const hasScrape = posts.length > 0;
+  const top = hasScrape ? topSelf(posts, 15) : [];
+  const noticeIfEmpty = hasScrape
+    ? ""
+    : "_No scrape data yet. You're writing from voice rules + trigger context alone. Customer can scrape their handle in the Vault tab later for sharper hooks._";
+  return [
+    "# Draft a carousel in my voice",
+    BODY_CAROUSEL(topic, trigger),
+    noticeIfEmpty,
+    fenceData("VOICE DATA (my rules)", strategy),
+    fenceData("HOOK DATA (my winners)", { winners: top, scraped_at }),
+    fenceData("PERFORMANCE SNAPSHOT", perf),
+    "Return the slide-by-slide carousel + caption + visual direction.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+export async function buildFreshHooksPrompt(
+  topic = "",
+  format = ""
+): Promise<string> {
+  const [{ posts, scraped_at }, strategy, perf] = await Promise.all([
+    fetchVaultSafe(),
+    fetchStrategy(),
+    fetchPerformance(),
+  ]);
+  const hasScrape = posts.length > 0;
+  const top = hasScrape ? topSelf(posts, 15) : [];
+  const noticeIfEmpty = hasScrape
+    ? ""
+    : "_No scrape data yet. You're writing from voice rules alone. Customer can scrape their handle in the Vault tab later so the under-used hook detection works._";
+  return [
+    "# Fresh hooks for one topic",
+    BODY_FRESH_HOOKS(topic, format),
+    noticeIfEmpty,
+    fenceData("VOICE DATA (my rules)", strategy),
+    fenceData("HOOK DATA (my winners)", { winners: top, scraped_at }),
+    fenceData("PERFORMANCE SNAPSHOT", perf),
+    "Return the 10 hook options as a numbered Markdown list.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+export async function buildStoryPrompt(
+  offer = "",
+  trigger?: TriggerTriplet,
+  promise = "",
+  proof = ""
+): Promise<string> {
+  const [{ posts, scraped_at }, strategy, perf] = await Promise.all([
+    fetchVaultSafe(),
+    fetchStrategy(),
+    fetchPerformance(),
+  ]);
+  const hasScrape = posts.length > 0;
+  const top = hasScrape ? topSelf(posts, 15) : [];
+  const noticeIfEmpty = hasScrape
+    ? ""
+    : "_No scrape data yet. You're writing from voice rules + trigger context alone. The story arcs still work without scraped data._";
+  return [
+    "# Draft an Instagram story sequence",
+    BODY_STORY(offer, trigger, promise, proof),
+    noticeIfEmpty,
+    fenceData("VOICE DATA (my rules)", strategy),
+    fenceData("HOOK DATA (my winners)", { winners: top, scraped_at }),
+    fenceData("PERFORMANCE SNAPSHOT", perf),
+    "Return the story arc + overlays, ENGLISH only, text only, no visual direction.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+export async function buildReelPrompt(
+  topic = "",
+  trigger?: TriggerTriplet,
+  format = ""
+): Promise<string> {
+  const [{ posts, scraped_at }, strategy, perf] = await Promise.all([
+    fetchVaultSafe(),
+    fetchStrategy(),
+    fetchPerformance(),
+  ]);
+  const hasScrape = posts.length > 0;
+  const top = hasScrape ? topSelf(posts, 15) : [];
+  const noticeIfEmpty = hasScrape
+    ? ""
+    : "_No scrape data yet. You're writing from voice rules + trigger context alone. Customer can scrape their handle in the Vault tab later for sharper hooks._";
+  return [
+    "# Draft a reel script in my voice",
+    BODY_REEL(topic, trigger, format),
+    noticeIfEmpty,
+    fenceData("VOICE DATA (my rules)", strategy),
+    fenceData("HOOK DATA (my winners)", { winners: top, scraped_at }),
+    fenceData("PERFORMANCE SNAPSHOT", perf),
+    "Return the reel script + visual direction + caption.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 export async function buildDraftCaptionPrompt(
   topic = "",
   trigger?: TriggerTriplet

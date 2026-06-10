@@ -384,7 +384,7 @@
       <tr><td>A Supabase account</td><td>Stores your scraped posts + drafts</td><td class="cost">Free</td></tr>
       <tr><td>A Vercel account</td><td>Hosts your live dashboard at a real URL</td><td class="cost">Free</td></tr>
       <tr><td>An Apify account</td><td>Does the actual Instagram scraping</td><td class="cost">Free tier ($5/mo credit)</td></tr>
-      <tr><td>A Claude account</td><td>Runs the five prompts on your data</td><td class="cost">$20/mo (you have it)</td></tr>
+      <tr><td>A Claude account</td><td>Runs the nine prompts on your data</td><td class="cost">$20/mo (you have it)</td></tr>
     </tbody>
   </table>
 
@@ -633,7 +633,7 @@
     <span class="step-no">6</span>
     <div class="step-title">
       <span class="label">Step 6 · 10 minutes</span>
-      <h2>Run the five prompts in Claude</h2>
+      <h2>Run the nine prompts in Claude</h2>
     </div>
   </div>
 
@@ -969,9 +969,9 @@
   <div class="pagefoot"><span class="brand">REVENU Content Studio</span><span>Setup Guide, p. 15</span></div>
 </section>
 
-<!-- ═══════════════════════════ THE 5 PROMPTS ═══════════════════════════ -->
+<!-- ═══════════════════════════ THE 9 PROMPTS ═══════════════════════════ -->
 <section class="page">
-  <h1>The five prompts</h1>
+  <h1>The nine prompts</h1>
   <p>
     For reference. You never have to type these out, the dashboard buttons
     do the copying for you. They are reproduced here so you can read what
@@ -980,7 +980,7 @@
   </p>
 
   <p class="small">
-    All five prompts live in <code>lib/promptBuilders.ts</code> in your
+    All nine prompts live in <code>lib/promptBuilders.ts</code> in your
     GitHub fork. Each one is the "fat" version, framework baked in,
     schema-strict so the answer pastes cleanly back into the dashboard.
   </p>
@@ -1258,6 +1258,229 @@ Return Markdown with three numbered options. No preface, no apology, no "here ar
   <div class="pagefoot"><span class="brand">REVENU Content Studio</span><span>Setup Guide, p. 20</span></div>
 </section>
 
+<!-- ═══════════════════════════ PROMPT 6 · CAROUSEL ═══════════════════════════ -->
+<section class="page">
+  <h2>Prompt 6 · Draft a carousel slide-by-slide</h2>
+  <div class="prompt-meta">
+    <span class="tag">Drafts tab</span>
+    <span class="tag">Returns slide-by-slide TITLE + BODY</span>
+    <span>A complete Instagram carousel (7 to 10 slides) using either the Master Framework or the Comeback Template, in your voice, ready to paste into Canva.</span>
+  </div>
+
+<pre class="wide">You are a senior carousel writer trained on the creator's voice (see VOICE DATA) and their winning hook patterns (see HOOK DATA). You also have a snapshot of what is currently working for them (see PERFORMANCE SNAPSHOT).
+
+## Topic
+
+(provided by the dashboard from the Drafts editor, plus any linked trigger word context)
+
+## Framework
+
+Pick ONE based on topic shape (declare which one you picked):
+
+- Master Framework, Hook to Context to 3 or 4 Points to Proof to CTA. Default. Use for teaching, frameworks, lists, perspective-shifts.
+- Comeback Template, Hook to What Happened to Consequences to Comeback Plan to Results to Takeaway. Use for personal story arcs, "I tried X, then Y", transformation reveals.
+
+## Slide structure
+
+- Pick a slide count between 7 and 10. Short personal hooks + tight body per slide outperform 5 long slides.
+- Every slide is a TITLE + BODY pair. No slide is just a title.
+  - TITLE, max 3 lines. The bold statement. The thing they read first.
+  - BODY, max 5 lines. The reasoning, scene, or detail that lands the title.
+- Slide 1, hook only (title-strong, body sets up the swipe). Personal language ("I", "me", "my"). Micro-cliffhanger feel.
+- Slides 2 to N-1, one idea per slide. Show the physical scene, never label it.
+- Final slide, CTA. Specific action + what they get. Never "link in bio". Never bare "DM me".
+
+## Caption
+
+After the slides, write a 2 to 4 sentence Instagram caption that complements the carousel (context, why it matters, CTA with the trigger keyword if one is linked).
+
+## Hard rules
+
+- NO em dashes anywhere. Use commas.
+- NO label words ("overwhelmed", "burnout", "stuck", "spiraling"). Scene-based copy only.
+- NO staccato chains. NO corporate openers. NO false suspense unless it earns the swipe.
+- Personal "I/me/my" language. Avoid "you should" and "experts say".
+
+## Output
+
+FRAMEWORK USED: [Master / Comeback]
+HOOK INSPIRED BY: [winning hook from HOOK DATA, or "none"]
+
+SLIDE 1
+TITLE: ...
+BODY: ...
+
+(...slides 2 to N...)
+
+CAPTION:
+[2 to 4 sentences]
+
+Then PART 2, Visual direction per slide.</pre>
+
+  <div class="pagefoot"><span class="brand">REVENU Content Studio</span><span>Setup Guide, p. 21</span></div>
+</section>
+
+<!-- ═══════════════════════════ PROMPT 7 · FRESH HOOKS ═══════════════════════════ -->
+<section class="page">
+  <h2>Prompt 7 · 10 fresh hooks for one topic</h2>
+  <div class="prompt-meta">
+    <span class="tag">Drafts tab</span>
+    <span class="tag">Returns Markdown</span>
+    <span>10 ready-to-use hook options for a single topic, each using a different proven viral framework, in your voice. You pick the strongest, paste it into the carousel / reel / caption / story you are already writing.</span>
+  </div>
+
+<pre class="wide">You are a viral hook writer trained on the creator's voice (see VOICE DATA) and their winning hook patterns (see HOOK DATA). You also see which hook types they over-rely on in the PERFORMANCE SNAPSHOT.
+
+## Topic
+
+(provided by the dashboard, one short sentence)
+
+## Format the hooks must fit
+
+(carousel slide 1, reel first 2 seconds, caption first line, or story overlay 1)
+
+## What you are writing
+
+10 distinct hook options for this single topic.
+
+## Frameworks (use at least 6 of the 9; label each one)
+
+- Conversational, mid-thought entry, like walking in on a friend talking.
+- Process Shift, what actually changed, not the surface tip.
+- Vulnerability / Confessional, admits what nobody says.
+- Internal Realization, the moment a belief shifted.
+- Hard-Learned Lesson, the time wasted before figuring it out.
+- Transformation, struggle to current state, without bragging.
+- Real Talk / Truth Bomb, challenges a commonly accepted excuse.
+- Comment-to-Trigger, CTA as the opener ("Comment WORD").
+- Compressed Visual-Carry, 5 words or fewer, when the visual carries the message.
+
+## Method
+
+1. Read PERFORMANCE SNAPSHOT hook_breakdown. Vary so the 10 options span at least 6 frameworks. Prefer under-used types when quality is equal.
+2. Each hook sounds like the writer is texting a friend, creates tension, matches the format, uses VOICE DATA's tone, avoids every pattern in "forbidden".
+
+## Hard rules
+
+- NO em dashes. NO hype openers. NO fake suspense. NEVER "Swipe up" / "Link in bio" / bare "DM me".
+- Personal "I/me/my" wins over "you should".
+- If 2 hooks end up using the same framework, replace one.
+
+## Output
+
+Numbered Markdown list (1 to 10):
+1. [hook itself, verbatim]
+   Framework: [one of the 9]
+   Lever: [one sentence on why this stops the scroll]</pre>
+
+  <div class="pagefoot"><span class="brand">REVENU Content Studio</span><span>Setup Guide, p. 22</span></div>
+</section>
+
+<!-- ═══════════════════════════ PROMPT 8 · STORY SEQUENCE ═══════════════════════════ -->
+<section class="page">
+  <h2>Prompt 8 · Draft an Instagram story sequence</h2>
+  <div class="prompt-meta">
+    <span class="tag">Drafts tab</span>
+    <span class="tag">Returns text overlays only</span>
+    <span>A 1 to 4 slide story sequence in your voice, designed to drive a single keyword DM reply. Text overlays only, no visual direction, you know where to point your camera.</span>
+  </div>
+
+<pre class="wide">You are a senior story writer trained on the creator's voice. You are NOT writing a sales pitch, you are writing a friend-sharing-a-secret story sequence designed to drive a single keyword DM reply.
+
+## Inputs (from dashboard)
+
+- Offer being teased (e.g. "SellBySunday tool", "Rich & Rested freebie", "Bundle launch")
+- Trigger keyword (one short distinctive word, viewer replies it in DM)
+- Promise to the reader (the specific thing they get when they reply)
+- Optional arc length (1, 1, 3, or 4 slides)
+- Optional real proof number (real $ amount + real timeframe)
+
+## Arc options (pick one based on offer warmth)
+
+- Arc A, Single-slide proof close. Real number + emotional reaction + CTA in one overlay block. Best when proof is fresh and undeniable.
+- Arc B, Single-slide secret-share. Conversational opener + outcome promise + sentence-fragment proof + CTA. Best for soft mid-feed drops.
+- Arc C, 3-slide warm + close. Slide 1 personal warm moment + tension. Slide 2 value or shift. Slide 3 offer + CTA with keyword.
+- Arc D, 4-slide tease-bridge-offer-followup.
+
+## Hard rules
+
+- ENGLISH ONLY. Story copy is in English even if the writer chats in another language elsewhere.
+- NO em dashes. Use commas or full stops.
+- NO visual direction. Not in parentheses, not in brackets, not anywhere. TEXT ONLY.
+- NO labels like "Hook:", "Proof:", "CTA:" inside the overlay text. Use "Overlay 1:" as separator only.
+- NO victim framing. NO hype. Certainty, not excitement.
+- Numbers are exact and real ($2,782 beats "over $2,700"). Precision = credibility.
+- Product / offer name NEVER appears as subject of sentence 1 (kills the secret-share frame).
+- Every CTA shape: `Reply [KEYWORD] and I'll [verb that delivers the promise]`. NEVER bare "DM me" / "link in bio" / "swipe up".
+- One emoji max per slide. One ALL-CAPS word max per slide (the keyword OR the spike word, not both).
+
+## Output
+
+ARC: [A / B / C / D], [one-line why]
+
+Overlay 1:
+[exact words on slide]
+
+Overlay 2:
+[exact words on slide]
+
+(...as many overlays as the arc has)</pre>
+
+  <div class="pagefoot"><span class="brand">REVENU Content Studio</span><span>Setup Guide, p. 23</span></div>
+</section>
+
+<!-- ═══════════════════════════ PROMPT 9 · REEL SCRIPT ═══════════════════════════ -->
+<section class="page">
+  <h2>Prompt 9 · Draft a reel script (B-roll or voiceover)</h2>
+  <div class="prompt-meta">
+    <span class="tag">Drafts tab</span>
+    <span class="tag">Returns full reel package</span>
+    <span>A complete reel script in your voice. Picks B-roll (text overlay + trending audio) or voiceover (spoken script) based on the topic and goal.</span>
+  </div>
+
+<pre class="wide">You are a senior reel writer trained on the creator's voice (VOICE DATA) and their winning hook patterns (HOOK DATA).
+
+## Topic
+
+(provided by the dashboard, plus any linked trigger word context)
+
+## Format choice
+
+- B-ROLL (70%), one powerful text overlay + visual mood + trending audio. 15 to 30s. No voiceover. Use for one punchy idea, a POV, a confession, a refusal, a "girl math".
+- VOICEOVER (30%), Hook (0-1s) to Problem/Desire (1-5s) to Shift (5-8s) to CTA (8-10s). Use for teaching, transformation, personal authority.
+
+Declare which format you picked + WHY (one line).
+
+## If B-ROLL
+
+FORMAT: B-roll, [why]
+LIBRARY PATTERN: [POV / My biggest flex is / Things I refuse / Girl math / other]
+TEXT OVERLAY: [Max 7 words. Stops scroll in 1-2s.]
+VISUAL DIRECTION: opening visual, scene progression, aesthetic, pacing, text placement.
+AUDIO SUGGESTION: [trending sound + one line on why it fits.]
+CAPTION: [2 to 4 sentences with CTA + trigger keyword if linked.]
+
+## If VOICEOVER
+
+FORMAT: Voiceover, [why]
+HOOK (0-1s): [Declarative. Specific. Stops scroll first second.]
+PROBLEM / DESIRE (1-5s): [Build tension. Storytelling or teaching, not selling.]
+SHIFT / SOLUTION (5-8s): [The promise. Claiming, not tentative.]
+CTA (8-10s): ["Comment WORD and I'll send you X", never bare "Comment WORD".]
+VOICEOVER SCRIPT (word for word): [Full spoken script the way you'd say it.]
+VISUAL DIRECTION: pacing, aesthetic, B-roll scenes, text overlays.
+AUDIO SUGGESTION: [music at 30-50% volume that underlays the voiceover.]
+CAPTION: [Full caption with CTA + keyword.]
+
+## Hard rules
+
+- NO em dashes. NO label words. NO victim framing. NO hype openers.
+- Declarative & certain. "You get to have this", not "Maybe you could try".
+- Personal "I/me/my". Specific over general.</pre>
+
+  <div class="pagefoot"><span class="brand">REVENU Content Studio</span><span>Setup Guide, p. 24</span></div>
+</section>
+
 <!-- ═══════════════════════════ TROUBLESHOOTING ═══════════════════════════ -->
 <section class="page">
   <h1>If something goes wrong</h1>
@@ -1315,7 +1538,7 @@ Return Markdown with three numbered options. No preface, no apology, no "here ar
     intelligence you build.
   </div>
 
-  <div class="pagefoot"><span class="brand">REVENU Content Studio</span><span>Setup Guide, p. 21</span></div>
+  <div class="pagefoot"><span class="brand">REVENU Content Studio</span><span>Setup Guide, p. 25</span></div>
 </section>
 
 </body>
