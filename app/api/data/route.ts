@@ -47,7 +47,56 @@ export async function GET(req: NextRequest) {
         .order("scraped_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      return NextResponse.json({ data: data ?? null });
+      if (!data) return NextResponse.json({ data: null });
+      // Schema lag: the table stores `pillar_mix` / `hook_type_mix` as jsonb
+      // OBJECTS keyed by label, the UI renders `pillar_breakdown` /
+      // `hook_breakdown` as ARRAYS of `{label, share}`. Normalize here so the
+      // UI never has to nil-check or shape-check, and so the same row written
+      // by either the legacy CLI prompt (object shape) or the in-app Claude
+      // analysis (array shape, see POST below) renders correctly.
+      const toBreakdown = (raw: unknown): Array<{ label: string; share: number }> => {
+        if (Array.isArray(raw)) {
+          return raw
+            .map((r) => {
+              if (!r || typeof r !== "object") return null;
+              const o = r as Record<string, unknown>;
+              const label = typeof o.label === "string" ? o.label.trim() : "";
+              const share =
+                typeof o.share === "number" && Number.isFinite(o.share)
+                  ? Math.max(0, Math.min(1, o.share))
+                  : 0;
+              if (!label) return null;
+              return { label, share };
+            })
+            .filter((b): b is { label: string; share: number } => b !== null);
+        }
+        if (raw && typeof raw === "object") {
+          const entries = Object.entries(raw as Record<string, unknown>)
+            .map(([label, v]) => {
+              const n = typeof v === "number" ? v : Number(v);
+              return Number.isFinite(n) ? { label, share: Math.max(0, n) } : null;
+            })
+            .filter((b): b is { label: string; share: number } => b !== null);
+          // If shares look like counts (not 0..1 fractions), normalize to
+          // shares so the UI's percentage bars render correctly. We detect
+          // "counts" by total > 1.5; below that we assume it's already a
+          // fraction distribution.
+          const total = entries.reduce((s, e) => s + e.share, 0);
+          if (total > 1.5 && total > 0) {
+            return entries.map((e) => ({ label: e.label, share: e.share / total }));
+          }
+          return entries;
+        }
+        return [];
+      };
+      return NextResponse.json({
+        data: {
+          ...data,
+          pillar_breakdown: toBreakdown(data.pillar_breakdown ?? data.pillar_mix),
+          hook_breakdown: toBreakdown(data.hook_breakdown ?? data.hook_type_mix),
+          top_posts: Array.isArray(data.top_posts) ? data.top_posts : [],
+        },
+      });
     }
 
     if (tab === "strategy") {
@@ -167,6 +216,165 @@ export async function POST(req: NextRequest) {
     const { data, error } = await supabase
       .from("drafts")
       .insert([{ ...body, status: body.status ?? "draft" }])
+      .select()
+      .single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ data });
+  }
+
+  if (tab === "performance") {
+    // In-app Claude analysis path. The customer clicks "Run analysis with
+    // Claude" on the Performance tab → copies a fat prompt seeded with their
+    // vault posts + strategy → pastes Claude's JSON reply into the Paste
+    // widget → the editor POSTs that JSON here. We insert a NEW row (vs
+    // upsert) so the Performance table keeps a history Claude or future
+    // chart code can trend across.
+    //
+    // Performance was deliberately excluded from WRITABLE_TABS at the bottom
+    // of this file (those are mutate-by-id PATCH/DELETE paths exposed to
+    // the customer). This POST is a separate, narrow write that only accepts
+    // the analysis-snapshot shape and lands in a single column-shape we
+    // control. No id, no PATCH, no DELETE — just append.
+    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+    const toBreakdownArray = (
+      raw: unknown
+    ): Array<{ label: string; share: number }> => {
+      if (!Array.isArray(raw)) return [];
+      return raw
+        .map((r) => {
+          if (!r || typeof r !== "object") return null;
+          const o = r as Record<string, unknown>;
+          const label = typeof o.label === "string" ? o.label.trim() : "";
+          const share =
+            typeof o.share === "number" && Number.isFinite(o.share)
+              ? Math.max(0, Math.min(1, o.share))
+              : 0;
+          if (!label) return null;
+          return { label, share };
+        })
+        .filter((b): b is { label: string; share: number } => b !== null);
+    };
+    const pillarBreakdown = toBreakdownArray(body.pillar_breakdown);
+    const hookBreakdown = toBreakdownArray(body.hook_breakdown);
+    // Also write the legacy *_mix object shape so any downstream code that
+    // reads it directly still works. Same data, two surfaces.
+    const toMixObject = (
+      arr: Array<{ label: string; share: number }>
+    ): Record<string, number> => {
+      const o: Record<string, number> = {};
+      for (const b of arr) o[b.label] = b.share;
+      return o;
+    };
+    // Whitelist + cap each top_post so a tampered Claude reply (or a curious
+    // customer poking the network tab) cannot land megabytes of arbitrary
+    // jsonb into the table via the service-role write path. Each field has
+    // a fixed type + a length cap, and any unknown key is dropped on the
+    // floor. Cap at 20 posts; the UI only renders 10 anyway.
+    const cap = (s: string, n: number) =>
+      typeof s === "string" ? s.slice(0, n) : "";
+    type SafeTopPost = {
+      id: string;
+      caption_preview: string;
+      hook: string;
+      hook_type?: string;
+      pillar?: string;
+      type: "carousel" | "reel" | "image" | "story";
+      likes: number;
+      comments: number;
+      views?: number;
+      url?: string;
+      posted_at?: string;
+    };
+    const sanitizeTopPosts = (raw: unknown): SafeTopPost[] => {
+      if (!Array.isArray(raw)) return [];
+      return raw
+        .slice(0, 20)
+        .map((p): SafeTopPost | null => {
+          if (!p || typeof p !== "object") return null;
+          const o = p as Record<string, unknown>;
+          const id = typeof o.id === "string" ? cap(o.id, 80) : "";
+          if (!id) return null;
+          const t = typeof o.type === "string" ? o.type : "image";
+          const type: SafeTopPost["type"] =
+            t === "carousel" || t === "reel" || t === "story" ? t : "image";
+          const num = (v: unknown): number => {
+            const n = typeof v === "number" ? v : Number(v);
+            return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
+          };
+          return {
+            id,
+            caption_preview: cap(
+              typeof o.caption_preview === "string" ? o.caption_preview : "",
+              280
+            ),
+            hook: cap(typeof o.hook === "string" ? o.hook : "", 280),
+            hook_type:
+              typeof o.hook_type === "string"
+                ? cap(o.hook_type, 40)
+                : undefined,
+            pillar:
+              typeof o.pillar === "string" ? cap(o.pillar, 80) : undefined,
+            type,
+            likes: num(o.likes),
+            comments: num(o.comments),
+            views:
+              o.views !== undefined && o.views !== null
+                ? num(o.views)
+                : undefined,
+            url:
+              typeof o.url === "string" && o.url.startsWith("http")
+                ? cap(o.url, 500)
+                : undefined,
+            posted_at:
+              typeof o.posted_at === "string"
+                ? cap(o.posted_at, 40)
+                : undefined,
+          };
+        })
+        .filter((p): p is SafeTopPost => p !== null);
+    };
+
+    const insertRow: Record<string, unknown> = {
+      followers:
+        typeof body.followers === "number" && Number.isFinite(body.followers)
+          ? Math.max(0, Math.round(body.followers))
+          : null,
+      avg_likes:
+        typeof body.avg_likes === "number" && Number.isFinite(body.avg_likes)
+          ? Math.max(0, Math.round(body.avg_likes))
+          : null,
+      best_pillar:
+        typeof body.best_pillar === "string" && body.best_pillar.trim().length > 0
+          ? cap(body.best_pillar.trim(), 80)
+          : null,
+      best_hook_type:
+        typeof body.best_hook_type === "string" &&
+        body.best_hook_type.trim().length > 0
+          ? cap(body.best_hook_type.trim(), 40)
+          : null,
+      top_posts: sanitizeTopPosts(body.top_posts),
+      pillar_mix: toMixObject(pillarBreakdown),
+      hook_type_mix: toMixObject(hookBreakdown),
+    };
+
+    // Carry the original vault scrape timestamp through if Claude echoed it
+    // back. Without this, the row's `scraped_at` defaults to NOW() and the
+    // UI reads "Last scraped: just now" even though the underlying posts
+    // came from a scrape that ran days ago. Validate as an ISO date string;
+    // if anything off, leave it to the DB default.
+    if (
+      typeof body.scraped_at === "string" &&
+      body.scraped_at.length > 0 &&
+      body.scraped_at.length < 40
+    ) {
+      const t = Date.parse(body.scraped_at);
+      if (Number.isFinite(t) && t > 0 && t < Date.now() + 86_400_000) {
+        insertRow.scraped_at = new Date(t).toISOString();
+      }
+    }
+    const { data, error } = await supabase
+      .from("performance")
+      .insert([insertRow])
       .select()
       .single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });

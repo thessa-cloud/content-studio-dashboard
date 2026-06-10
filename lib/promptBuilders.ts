@@ -395,6 +395,100 @@ If any test fails, rewrite that option before returning.
 
 Return Markdown with three numbered options. No preface, no apology, no "here are your captions" — just the three options.`;
 
+const BODY_PERFORMANCE = `You are a senior performance analyst. From the DATA below (the creator's own scraped Instagram posts, plus their strategy pillars), produce a single JSON snapshot that the Performance tab will render.
+
+You are NOT writing prose. You are computing aggregates a human could compute from the data, plus two interpretive classifications.
+
+## What to compute
+
+1. **avg_likes** — mean of \`likes\` across all posts where source = "self". Round to integer. If there are fewer than 5 self posts, set to null.
+2. **followers** — only set if the DATA includes a \`followers\` field at the top level. Otherwise null.
+3. **top_posts** — the 10 highest by engagement = \`likes + 4 * comments\` (comments weigh more because they are scarcer). For each post return:
+   - id (verbatim from DATA)
+   - caption_preview (first 110 chars of the caption, plain text)
+   - hook (the first line of the caption; the scroll-stopper)
+   - hook_type (see hook type taxonomy below)
+   - pillar (see pillar classification below)
+   - type ("carousel" | "reel" | "image" | "story" — copy from DATA if set, else infer from format hints)
+   - likes, comments (numbers, verbatim)
+   - views (number, only if present in DATA)
+   - url (verbatim from DATA if present)
+   - posted_at (ISO string, verbatim if present)
+4. **best_pillar** — the pillar that appears most often across the top 10. Return the pillar NAME as a string.
+5. **best_hook_type** — the hook type that appears most often across the top 10. Return the type string.
+6. **pillar_breakdown** — across ALL self posts, the share each pillar holds. Array of \`{ label, share }\` where share is 0..1 and shares sum to ~1.0. Include every pillar that appears at least once.
+7. **hook_breakdown** — same shape, across ALL self posts, share per hook type. Array of \`{ label, share }\` summing to ~1.0.
+
+## Pillar classification
+
+Use the pillars listed in STRATEGY DATA as the ONLY valid pillar names. Read each caption and classify it into exactly one of those pillars by topic match (not by tone). If a post genuinely matches none, classify it as "other" (lowercase). Never invent a new pillar name.
+
+If the STRATEGY DATA has no pillars defined yet, classify every post as "uncategorized" and continue. The customer will revisit after running the Pillars prompt.
+
+## Hook type taxonomy
+
+Classify each hook as ONE of these exact strings:
+
+- "contrarian" — challenges a widely-held belief ("Stop posting every day.")
+- "callout" — names the reader by situation ("If you sell digital products and you're not posting on Sunday, read this.")
+- "promise" — specific outcome named upfront ("Here is exactly how I sold out my offer in 4 days.")
+- "curiosity-gap" — withholds the key info, forces a read ("I changed one thing about my hook and my reach 3x'd.")
+- "numbered-list" — "5 things…", "3 hooks…"
+- "story-open" — "I was sitting at my desk at 11pm when…"
+- "confession" — admits something uncomfortable ("I almost gave up on this offer in May.")
+- "stat-shock" — opens with a number that disrupts ("$0 to $47k in 8 weeks. Here is how.")
+- "question" — opens with a real question, not a fake one ("What if your low engagement is actually a signal you are about to break through?")
+
+If a hook genuinely fits 2, pick the dominant one. Never invent a new type.
+
+## Forbidden
+
+- Em dashes anywhere in the output. Use commas.
+- Made-up posts. Only ids that appear in DATA.
+- Made-up pillars or hook types outside the taxonomies above.
+- Prose before or after the JSON.
+- Refusing to answer because data is "limited". Compute with what is there and proceed.
+
+## Output
+
+Return JSON only. No prose, no markdown headers. Match this schema exactly. The \`scraped_at\` field must be copied verbatim from the DATA block's \`scraped_at\` so the dashboard's "last scraped" timestamp reflects when the underlying scrape actually ran, not when this analysis was pasted in:
+
+\`\`\`json
+{
+  "scraped_at": "2026-05-12T14:00:00Z",
+  "followers": null,
+  "avg_likes": 1240,
+  "best_pillar": "Passive income",
+  "best_hook_type": "contrarian",
+  "top_posts": [
+    {
+      "id": "abc123",
+      "caption_preview": "First 110 chars of the caption shown to readers...",
+      "hook": "Stop posting every day.",
+      "hook_type": "contrarian",
+      "pillar": "Passive income",
+      "type": "reel",
+      "likes": 4820,
+      "comments": 312,
+      "views": 81200,
+      "url": "https://instagram.com/p/abc",
+      "posted_at": "2026-05-12T14:20:00Z"
+    }
+  ],
+  "pillar_breakdown": [
+    { "label": "Passive income", "share": 0.42 },
+    { "label": "Sold-out launches", "share": 0.31 },
+    { "label": "Pricing", "share": 0.27 }
+  ],
+  "hook_breakdown": [
+    { "label": "contrarian", "share": 0.34 },
+    { "label": "promise", "share": 0.26 },
+    { "label": "story-open", "share": 0.22 },
+    { "label": "callout", "share": 0.18 }
+  ]
+}
+\`\`\``;
+
 /* ─────────────────────────────────────────────────────────────────────
  * Builders. Each returns a single string ready to paste into Claude.
  * ───────────────────────────────────────────────────────────────────── */
@@ -445,6 +539,42 @@ export async function buildCompetitorPrompt(): Promise<string> {
     "# Competitor patterns",
     BODY_COMPETITORS,
     fenceData("DATA (competitor posts)", { posts: comps, scraped_at }),
+  ].join("\n\n");
+}
+
+export async function buildPerformanceAnalysisPrompt(): Promise<string> {
+  // Performance analysis needs the customer's posts (the thing being analyzed)
+  // AND their strategy pillars (so Claude classifies posts against the SAME
+  // taxonomy the rest of the dashboard uses, not an invented one). We use
+  // fetchVault here, not fetchVaultSafe — there is no useful analysis without
+  // scraped posts, so the EMPTY_VAULT throw correctly nudges the customer to
+  // scrape first.
+  const [{ posts, scraped_at }, strategy] = await Promise.all([
+    fetchVault(),
+    fetchStrategy(),
+  ]);
+  // Send ALL self posts (not just top 30 like buildPillarsPrompt) because
+  // breakdown shares require the full denominator. Trim captions to keep the
+  // prompt under model limits.
+  const selfPosts = posts
+    .filter((p) => p.source === "self")
+    .map((p) => ({
+      ...p,
+      caption: trimCaption(p.caption ?? ""),
+    }));
+  // Strategy pillars feed the classification — pull just the names so the
+  // prompt has the exact valid pillar vocabulary, no extra noise.
+  const pillarNames = Array.isArray(strategy?.pillars)
+    ? (strategy!.pillars as Array<Record<string, unknown>>)
+        .map((p) => (typeof p.name === "string" ? p.name : ""))
+        .filter((n): n is string => n.length > 0)
+    : [];
+  return [
+    "# Analyze winners → Performance snapshot",
+    BODY_PERFORMANCE,
+    fenceData("STRATEGY DATA (valid pillar names)", { pillars: pillarNames }),
+    fenceData("DATA (my self posts)", { posts: selfPosts, scraped_at }),
+    "Return only the JSON snapshot object. Nothing else.",
   ].join("\n\n");
 }
 
