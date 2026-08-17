@@ -11,6 +11,8 @@ interface TabHeaderProps {
   onScrapeComplete?: () => void;
   /** Hide the scrape controls (e.g. on Settings). */
   hideScrape?: boolean;
+  /** Block Scrape now while the tab has an unsaved edit open (see ScrapeNowButton). */
+  scrapeDisabled?: boolean;
 }
 
 /**
@@ -26,6 +28,7 @@ export default function TabHeader({
   scrapedAt,
   onScrapeComplete,
   hideScrape = false,
+  scrapeDisabled = false,
 }: TabHeaderProps) {
   return (
     <div
@@ -67,7 +70,7 @@ export default function TabHeader({
       </div>
       {!hideScrape && (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.4rem" }}>
-          <ScrapeNowButton onComplete={onScrapeComplete} />
+          <ScrapeNowButton onComplete={onScrapeComplete} disabled={scrapeDisabled} />
           <LastScrapedTimestamp scrapedAt={scrapedAt} />
         </div>
       )}

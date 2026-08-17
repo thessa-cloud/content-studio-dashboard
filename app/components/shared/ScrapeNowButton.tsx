@@ -7,6 +7,16 @@ interface ScrapeNowButtonProps {
   onComplete?: () => void;
   /** Optional scrape scope. Defaults to "all" (own handle + competitors). */
   mode?: "all" | "self" | "competitors";
+  /**
+   * Block the scrape while the parent tab has unsaved local edits open.
+   * `onComplete` (usually the tab's `load()`) flips a `loading` flag that
+   * unmounts whatever editor is open, discarding anything typed but not
+   * saved yet (2026-08-17, same accordion-save bug class found on
+   * SellBySunday's Step 4, present here via a different trigger: Scrape
+   * now instead of an accordion collapse). Defaults to false so tabs
+   * without an edit-mode concept are unaffected.
+   */
+  disabled?: boolean;
 }
 
 /**
@@ -14,11 +24,12 @@ interface ScrapeNowButtonProps {
  * POSTs to /api/scrape, shows spinner while running, fires onComplete on success.
  * Lives on every tab so the user never has to navigate to refresh data.
  */
-export default function ScrapeNowButton({ onComplete, mode = "all" }: ScrapeNowButtonProps) {
+export default function ScrapeNowButton({ onComplete, mode = "all", disabled = false }: ScrapeNowButtonProps) {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function runScrape() {
+    if (disabled) return;
     setRunning(true);
     setError(null);
     try {
@@ -53,15 +64,17 @@ export default function ScrapeNowButton({ onComplete, mode = "all" }: ScrapeNowB
     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.35rem" }}>
       <button
         onClick={runScrape}
-        disabled={running}
+        disabled={running || disabled}
+        title={disabled ? "Finish saving or cancel your open edit first" : undefined}
         style={{
-          background: running ? "var(--color-taupe)" : "var(--color-burgundy)",
+          background: running || disabled ? "var(--color-taupe)" : "var(--color-burgundy)",
           border: "none",
           color: "#fff",
           padding: "0.65rem 1.25rem",
           borderRadius: "10px",
           fontSize: "0.85rem",
-          cursor: running ? "not-allowed" : "pointer",
+          cursor: running || disabled ? "not-allowed" : "pointer",
+          opacity: disabled && !running ? 0.55 : 1,
           fontFamily: "var(--font-body)",
           fontWeight: 600,
           display: "inline-flex",

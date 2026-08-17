@@ -186,6 +186,7 @@ export default function Strategy() {
         subtitle="Your content pillars, voice rules, and current campaigns. Edit them by hand here, or click any section's empty-state button to copy a prompt for claude.ai and paste the JSON reply back."
         scrapedAt={data?.scraped_at}
         onScrapeComplete={load}
+        scrapeDisabled={editing !== null}
       />
 
       {loading && (
@@ -214,6 +215,7 @@ export default function Strategy() {
             title="Content pillars"
             onEdit={() => setEditing("pillars")}
             isEditing={editing === "pillars"}
+            editDisabled={editing !== null && editing !== "pillars"}
           >
             {editing === "pillars" ? (
               <PillarsEditor
@@ -272,6 +274,7 @@ export default function Strategy() {
             title="Voice rules"
             onEdit={() => setEditing("voice")}
             isEditing={editing === "voice"}
+            editDisabled={editing !== null && editing !== "voice"}
           >
             {editing === "voice" ? (
               <VoiceEditor
@@ -419,6 +422,7 @@ export default function Strategy() {
             title="Hook library"
             onEdit={() => setEditing("hooks")}
             isEditing={editing === "hooks"}
+            editDisabled={editing !== null && editing !== "hooks"}
           >
             {editing === "hooks" ? (
               <HooksEditor
@@ -469,6 +473,7 @@ export default function Strategy() {
             title="Current campaigns"
             onEdit={() => setEditing("campaigns")}
             isEditing={editing === "campaigns"}
+            editDisabled={editing !== null && editing !== "campaigns"}
           >
             {editing === "campaigns" ? (
               <CampaignsEditor
@@ -515,6 +520,7 @@ export default function Strategy() {
             title="ICA notes"
             onEdit={() => setEditing("ica")}
             isEditing={editing === "ica"}
+            editDisabled={editing !== null && editing !== "ica"}
           >
             {editing === "ica" ? (
               <IcaEditor
@@ -554,11 +560,22 @@ function Section({
   title,
   onEdit,
   isEditing,
+  editDisabled,
   children,
 }: {
   title: string;
   onEdit?: () => void;
   isEditing?: boolean;
+  // True when a DIFFERENT section is currently being edited. Each editor
+  // keeps its typed text in local useState with no autosave/draft, so
+  // switching to another section's Edit before Save/Cancel would unmount
+  // this one and silently discard whatever was typed (2026-08-17, same bug
+  // class Thessa reported on SellBySunday's Step 4 accordions, found here
+  // during that follow-up check). Blocking the switch is simpler and safer
+  // than trying to auto-flush local component state across five independent
+  // editors, so the Edit button is disabled instead of hidden, with a title
+  // explaining why, until the open editor is saved or cancelled.
+  editDisabled?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -576,7 +593,13 @@ function Section({
         <h2 style={{ fontFamily: "var(--font-header)", fontSize: "1.2rem", margin: 0 }}>{title}</h2>
         <div style={{ display: "flex", alignItems: "center", gap: "0.65rem" }}>
           {onEdit && !isEditing && (
-            <button onClick={onEdit} style={editBtn} aria-label={`Edit ${title}`}>
+            <button
+              onClick={editDisabled ? undefined : onEdit}
+              disabled={editDisabled}
+              style={editDisabled ? { ...editBtn, opacity: 0.45, cursor: "not-allowed" } : editBtn}
+              aria-label={`Edit ${title}`}
+              title={editDisabled ? "Finish saving or cancel the section you're editing first" : undefined}
+            >
               <Pencil size={12} strokeWidth={1.8} style={{ marginRight: "0.3rem" }} />
               Edit
             </button>
